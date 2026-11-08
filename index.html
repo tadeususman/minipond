@@ -1118,7 +1118,8 @@ function splashSound(under, k = 1) {
     try {
       const t = actx.currentTime, src = actx.createBufferSource(), g = actx.createGain();
       src.buffer = eatBuf; src.playbackRate.value = (under ? .8 : k >= .8 ? rnd(.72, .88) : rnd(.95, 1.15));
-      g.gain.setValueAtTime(under ? .5 : Math.min(.95, .4 + .55 * k), t);
+      const vr = .45 + Math.random() * .7; // each splash gets its own loudness
+      g.gain.setValueAtTime(Math.min(.95, (under ? .5 : .4 + .55 * k) * vr), t);
       let node = src;
       if (under) { const lp = actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 800; src.connect(lp); node = lp; }
       node.connect(g); g.connect(actx.destination); src.start(t); src.stop(t + 1.1); return;
