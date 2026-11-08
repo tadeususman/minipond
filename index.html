@@ -77,6 +77,19 @@
 const C = document.getElementById('c'), MAIN = C.getContext('2d'); let ctx = MAIN;
 let fishCv = null, fishCtx = null;
 let W = 0, H = 0, DPR = 1, bg = null;
+// ---------- adaptive quality: 2 = full, 1 = lighter, 0 = lightest; drops automatically when frames run slow ----------
+let Q = (navigator.maxTouchPoints > 0 && innerWidth * innerHeight * Math.pow(Math.min(2, window.devicePixelRatio || 1), 2) > 4.2e6) ? 1 : 2;
+let qFrames = 0, qAcc = 0, qGrace = 2500, qHook = null;
+const qDpr = () => Math.min(Q >= 2 ? 2 : Q === 1 ? 1.4 : 1, window.devicePixelRatio || 1);
+window.__q = () => Q;
+function qMon(raw) {
+  if (raw > 1500 || Q <= 0) return;
+  if (qGrace > 0) { qGrace -= raw; return; }
+  qAcc += raw; qFrames++;
+  if (qFrames < 12 || qAcc < 1500) return;
+  const avg = qAcc / qFrames; qAcc = qFrames = 0;
+  if (avg > 30) { Q--; qGrace = 2000; if (Math.abs(qDpr() - DPR) > .01) resize(); if (qHook) qHook(); }
+}
 const TAU = Math.PI * 2, rnd = (a, b) => a + Math.random() * (b - a);
 const MAX_FISH = 20;
 
@@ -364,10 +377,10 @@ function updateCausticDrift(dt) {
 // refraction: the pond floor and light are bent inside every ripple ring, like the reference water
 let snapC = null, snapX = null;
 function refractRipples() {
-  if (!ripples.length) return;
+  if (!ripples.length || Q < 1) return;
   if (!snapC || snapC.width !== C.width || snapC.height !== C.height) { snapC = document.createElement('canvas'); snapC.width = C.width; snapC.height = C.height; snapX = snapC.getContext('2d'); }
   snapX.setTransform(1, 0, 0, 1, 0, 0); snapX.drawImage(C, 0, 0);
-  const list = ripples.filter(r => r.r > 5).sort((a, b) => b.a * (1 - b.r / b.max) - a.a * (1 - a.r / a.max)).slice(0, 10);
+  const list = ripples.filter(r => r.r > 5).sort((a, b) => b.a * (1 - b.r / b.max) - a.a * (1 - a.r / a.max)).slice(0, Q >= 2 ? 10 : 4);
   for (const r of list) {
     const k = 1 - r.r / r.max; if (k <= 0) continue;
     const A = Math.min(9, r.a * k * 18), w = 7 + r.r * .12, n = Math.max(8, Math.min(18, Math.ceil(r.r / 7)));
@@ -631,7 +644,7 @@ function drawFrog(dt) {
 }
 
 function resize() {
-  DPR = Math.min(2, window.devicePixelRatio || 1); const oW = W, oH = H;
+  DPR = qDpr(); const oW = W, oH = H;
   W = innerWidth; H = innerHeight; C.width = W * DPR; C.height = H * DPR;
   C.style.width = W + 'px'; C.style.height = H + 'px'; ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   makeBg(); makeAmbient(); makeEdge(); if (!leaves.length) makeLeaves();
@@ -895,8 +908,9 @@ function drawLeaves(dt) {
 // ---------- loop ----------
 let last = performance.now(), T = 0, rainAcc = 0, saveAcc = 0;
 function loop(now) {
-  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  const rawDt = now - last, dt = Math.min(.05, rawDt / 1000); last = now;
   if (diving) { requestAnimationFrame(loop); return; }
+  qMon(rawDt);
   T += dt;
   ctx.drawImage(bg, 0, 0, W, H);
   // caustic light
@@ -936,7 +950,7 @@ function loop(now) {
     ctx.fillStyle = `rgba(88,168,160,${.05 + .16 * d})`; ctx.fillRect(bx, by, bw, bh);
     drawCausticTop(bx, by, bw, bh, .6 + .5 * (1 - d));
     ctx.globalCompositeOperation = 'source-over'; ctx = MAIN;
-    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.filter = `blur(${(.15 + 1.1 * d).toFixed(2)}px)`; ctx.globalAlpha = 1 - .3 * d;
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.filter = Q >= 2 ? `blur(${(.15 + 1.1 * d).toFixed(2)}px)` : 'none'; ctx.globalAlpha = 1 - .3 * d;
     ctx.drawImage(fishCv, bx * DPR, by * DPR, bw * DPR, bh * DPR, bx * DPR, by * DPR, bw * DPR, bh * DPR); ctx.restore();
   }
   fishes.forEach((f, i) => {
@@ -1208,10 +1222,12 @@ const VS_WORLD = `varying vec3 vW; varying vec2 vUv; void main(){ vUv=uv; vec4 w
 function initDive() {
   const T3 = THREE, wrap = $('dive');
   const renderer = new T3.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(1.6, window.devicePixelRatio || 1)); renderer.setSize(innerWidth, innerHeight);
+  const dPix = () => Math.min(Q >= 2 ? 1.6 : Q === 1 ? 1.2 : 1, window.devicePixelRatio || 1);
+  renderer.setPixelRatio(dPix()); renderer.setSize(innerWidth, innerHeight);
   wrap.appendChild(renderer.domElement);
   const scene = new T3.Scene(), camera = new T3.PerspectiveCamera(62, innerWidth / innerHeight, .05, 90);
-  const U = { uT: { value: 0 }, uFog: { value: new T3.Color('#1d6a6e') }, uDen: { value: .075 }, uCam: { value: new T3.Vector3() }, uLight: { value: 1 }, uRain: { value: 0 } };
+  const U = { uT: { value: 0 }, uFog: { value: new T3.Color('#1d6a6e') }, uDen: { value: .075 }, uCam: { value: new T3.Vector3() }, uLight: { value: 1 }, uRain: { value: 0 }, uQ: { value: Q >= 2 ? 1 : 0 } };
+  qHook = () => { renderer.setPixelRatio(dPix()); renderer.setSize(innerWidth, innerHeight); U.uQ.value = Q >= 2 ? 1 : 0; };
   scene.background = U.uFog.value; scene.fog = new T3.FogExp2(0x1d6a6e, .075);
   const hemi = new T3.HemisphereLight(0xc8fff4, 0x5a5a3a, .95); scene.add(hemi);
   const sun = new T3.DirectionalLight(0xfff2d2, .85); sun.position.set(3, 10, 2); scene.add(sun);
@@ -1280,16 +1296,19 @@ function initDive() {
   // water surface seen from below (with Snell's window)
   const sg = new T3.PlaneGeometry(80, 80, 1, 1); sg.rotateX(Math.PI / 2);
   const surf = new T3.Mesh(sg, new T3.ShaderMaterial({ uniforms: U, side: T3.DoubleSide, vertexShader: VS_WORLD, fragmentShader: `
-    uniform float uT; uniform float uLight; uniform float uRain; ${GLSL_FOG} varying vec3 vW; varying vec2 vUv;
+    uniform float uT; uniform float uLight; uniform float uRain; uniform float uQ; ${GLSL_FOG} varying vec3 vW; varying vec2 vUv;
     float h21(vec2 q){ return fract(sin(dot(q,vec2(127.1,311.7)))*43758.5453); }
     float vn(vec2 q){ vec2 i=floor(q), f=fract(q); f=f*f*(3.-2.*f); return mix(mix(h21(i),h21(i+vec2(1,0)),f.x),mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),f.x),f.y); }
     float hgt(vec2 q){ return vn(q*.55+vec2(uT*.07,-uT*.05))*.9+vn(q*1.4+vec2(-uT*.16,uT*.1))*.5+vn(q*3.1+vec2(uT*.3,uT*.22))*.22; }
     void main(){ vec2 p=vW.xz; vec2 pf=p-vec2(uT*.6,0.); float w=sin(pf.x*1.3+uT*1.2)*sin(pf.y*1.1-uT)+.5*sin(pf.x*2.7-uT*1.7+pf.y*1.9);
-      float e=.12; float h0=hgt(p); vec2 gr=vec2(hgt(p+vec2(e,0.))-h0,hgt(p+vec2(0.,e))-h0)/e;
-      float facet=clamp(.5+gr.x*.28-gr.y*.18,0.,1.);
-      float pch=vn(p*.22+vec2(uT*.03,0.));
+      float facet=.5, pch=.5;
+      if(uQ>.5){ float e=.12; float h0=hgt(p); vec2 gr=vec2(hgt(p+vec2(e,0.))-h0,hgt(p+vec2(0.,e))-h0)/e;
+        facet=clamp(.5+gr.x*.28-gr.y*.18,0.,1.); pch=vn(p*.22+vec2(uT*.03,0.)); } else { facet=.5+.25*w; }
       float foam=smoothstep(4.5,0.,length(p-vec2(-11.5,0.)))*(.5+.3*sin(uT*9.+p.x*5.+p.y*3.));
-      float r=uRain*pow(max(0.,sin(p.x*7.+uT*5.)*sin(p.y*6.3-uT*4.)),14.)*2.;
+      float r=0.; if(uRain>.01){ vec2 g=p*.8; vec2 id=floor(g); float acc=0.;
+        for(int i=-1;i<=1;i++) for(int j=-1;j<=1;j++){ vec2 c=id+vec2(float(i),float(j)); float h=h21(c); vec2 o=vec2(h21(c+7.1),h21(c+3.7));
+          float ph=fract(uT*(.28+.3*h)+h*7.); float rr=length(g-(c+o)); float ring=exp(-pow((rr-ph*.85)*10.,2.))*(1.-ph)*(1.-ph); acc+=ring*step(.5,h); }
+        r=uRain*acc*.55; }
       float win=smoothstep(10.,1.5,length(p-uCam.xz));
       vec3 base=mix(uFog*.95, vec3(.82,1.,.95)*(.4+.6*uLight), .22+.5*win);
       vec3 c=base*(.8+.22*facet+.1*w)*(.92+.16*pch)+vec3(.9,1.,.95)*pow(facet,4.)*.07*(.4+.6*uLight)*(.4+.6*win)+r+foam*.6*(.4+.6*uLight);
@@ -1347,7 +1366,8 @@ function initDive() {
   const NS = 700, spos = new Float32Array(NS * 3);
   for (let i = 0; i < NS; i++) { spos[i * 3] = rnd(-14, 14); spos[i * 3 + 1] = rnd(FLOOR_Y, SURF_Y); spos[i * 3 + 2] = rnd(-14, 14); }
   const sgeo = new T3.BufferGeometry(); sgeo.setAttribute('position', new T3.BufferAttribute(spos, 3));
-  const snow = new T3.Points(sgeo, new T3.PointsMaterial({ color: 0xe8fff6, size: .03, transparent: true, opacity: .45, depthWrite: false }));
+  const dc = document.createElement('canvas'); dc.width = dc.height = 32; { const g = dc.getContext('2d'), gr = g.createRadialGradient(16, 16, 0, 16, 16, 16); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(.45, 'rgba(255,255,255,.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 32, 32); }
+  const snow = new T3.Points(sgeo, new T3.PointsMaterial({ map: new T3.CanvasTexture(dc), color: 0xe8fff6, size: .06, transparent: true, opacity: .4, depthWrite: false }));
   snow.frustumCulled = false; scene.add(snow);
   const NPL = 240, plpos = new Float32Array(NPL * 3), plv = [];
   function resetPl(i) { plpos[i * 3] = -11.6 + rnd(-.3, .3); plpos[i * 3 + 1] = SURF_Y - .05; plpos[i * 3 + 2] = rnd(-1.6, 1.6); plv[i] = { vx: rnd(.4, 1.3), vy: rnd(-2.4, -1), life: rnd(1.5, 4) }; }
@@ -1686,8 +1706,8 @@ function syncFish3D() {
 }
 function diveLoop(now) {
   if (!diving) return;
-  const dt = Math.min(.05, (now - D.last) / 1000); D.last = now;
-  D.frame(dt); requestAnimationFrame(diveLoop);
+  const rawDt = now - D.last, dt = Math.min(.05, rawDt / 1000); D.last = now;
+  qMon(rawDt); D.frame(dt); requestAnimationFrame(diveLoop);
 }
 let ambBuf = null, ambLoading = null;
 function loadAmbBuf() {
