@@ -297,8 +297,11 @@ function smooth(arr, ox, oy) {
 let M = 60, shore = [], edgeCv = null, sprites = [], shadePat = null, lightPat = null, spoutY = 0;
 // ---------- water current ----------
 const FL = { x: 0, y: 0 };
+// three water inlets on the left bank: middle (strongest) plus one above and one below, sitting between the flank boulders
+function inletYs() { const B = Math.max(46, Math.min(120, Math.min(W, H) * .11)), d = 2 * (40 + B * .5); return [H * .5, H * .5 - d, H * .5 + d]; }
+const INLET_W = [1, .6, .6];
 function flowAt(x, y, t) {
-  const sy = H * .5, jet = 55 * Math.exp(-(((x - M) / 190) ** 2) - (((y - sy) / 80) ** 2));
+  let jet = 0; { const ys = inletYs(); for (let i = 0; i < 3; i++) jet += 55 * INLET_W[i] * Math.exp(-(((x - M) / 190) ** 2) - (((y - ys[i]) / 80) ** 2)); }
   FL.x = 22 * (.7 + .3 * Math.sin(y * .008 + t * .2)) + 14 * Math.sin(y * .012 + t * .35) * Math.cos(x * .006) + jet;
   FL.y = 12 * Math.sin(x * .01 - t * .3 + y * .004) + jet * .12 * Math.sin(t * 1.3);
   const hf = 1 - (T - ptr.t) / .7;
@@ -313,7 +316,7 @@ function wake(x, y, a, sz, id) { if (wakes.length < 140) wakes.push({ x, y, a, s
 let streaks = [], foamAcc = 0;
 function resetStreak(s, edge) {
   s.x = edge ? M + rnd(-20, 0) : rnd(M, W - M); s.y = rnd(M, H - M);
-  if (Math.random() < .3) { s.x = M + rnd(0, 70); s.y = H * .5 + rnd(-40, 40); }
+  if (Math.random() < .35) { const ys = inletYs(); s.x = M + rnd(0, 70); s.y = ys[Math.floor(Math.random() * 3)] + rnd(-40, 40); }
   s.s = rnd(1, 2.6); s.a = rnd(.2, .5); return s;
 }
 
@@ -467,7 +470,7 @@ function edgePoint() {
 function edgeDist(x, y) { return Math.min(x - M, W - M - x, y - M, H - M - y); }
 function initCritters() {
   crInit = true; shrimp = []; frog = null;
-  for (let i = 0; i < 4; i++) { const [x, y] = edgePoint(); shrimp.push({ x, y, a: rnd(0, TAU), v: 0, ph: rnd(0, TAU), pause: rnd(0, 3), flee: 0, sz: rnd(.9, 1.15), pts: Array.from({ length: 6 }, () => ({ x, y })) }); }
+  for (let i = 0; i < 3; i++) { const [x, y] = edgePoint(); shrimp.push({ x, y, a: rnd(0, TAU), v: 0, ph: rnd(0, TAU), pause: rnd(0, 3), flee: 0, sz: rnd(.9, 1.15), pts: Array.from({ length: 6 }, () => ({ x, y })) }); }
   const [cx, cy] = edgePoint(); crab = { x: cx, y: cy, b: rnd(0, TAU), dir: Math.random() < .5 ? 1 : -1, v: 0, ph: 0, pause: rnd(1, 3), flee: 0 };
   { const [qx, qy] = edgePoint(); crab2 = { x: qx, y: qy, b: rnd(0, TAU), dir: Math.random() < .5 ? 1 : -1, v: 0, ph: rnd(0, 6), pause: rnd(1, 3), flee: 0 }; }
 }
@@ -700,7 +703,7 @@ function makePads() {
   for (let i = 0, tries = 0; i < n && tries < 300; tries++) {
     const r = rnd(26, 50) * (Math.min(W, H) < 500 ? .8 : 1);
     let x = 0, y = 0, best = 1e9;
-    for (let k = 0; k < 8; k++) { const cx = rnd(M + r * .8, W - M - r * .8), cy = rnd(M + r * .8, H - M - r * .8), ed = Math.min(cx, W - cx, cy, H - cy); if (ed < best && inWater(cx, cy) && !(cx < 230 + r && Math.abs(cy - H * .5) < 80 + r)) { best = ed; x = cx; y = cy; } }
+    for (let k = 0; k < 8; k++) { const cx = rnd(M + r * .8, W - M - r * .8), cy = rnd(M + r * .8, H - M - r * .8), ed = Math.min(cx, W - cx, cy, H - cy); if (ed < best && inWater(cx, cy) && !(cx < 230 + r && inletYs().some(iy => Math.abs(cy - iy) < 80 + r))) { best = ed; x = cx; y = cy; } }
     if (best > 1e8) continue;
     if (pads.some(p => Math.hypot(p.x - x, p.y - y) < p.r + r + 14)) continue;
     pads.push({ x, y, r, rot: rnd(0, TAU), notch: rnd(0, TAU), flower: Math.random() < .4, ph: rnd(0, TAU), hue: rnd(-8, 8), drops: newDrops() }); i++;
@@ -715,20 +718,22 @@ function makeAmbient() {
 }
 let inflowP = [], inAcc = 0, inRip = 0;
 function drawInflow(dt) {
-  const sy = H * .5, hw = 36;
-  // water pouring in from the left: bright current fanning out into the pond
-  inAcc += dt * 90; while (inAcc > 1) { inAcc--; inflowP.push({ x: -4, y: sy + rnd(-hw, hw) * .8, vx: rnd(90, 150), vy: 0, life: rnd(1.6, 2.6), t: 0, w: rnd(1, 2.6) }); }
+  const hw = 36, ys = inletYs();
   ctx.lineCap = 'round';
+  // water pouring in from the left: bright current fanning out into the pond (three inlets)
+  inAcc += dt * 90; while (inAcc > 1) { inAcc--; const q = Math.random() < .5 ? 0 : 1 + (Math.random() < .5 ? 0 : 1), sc = INLET_W[q]; if (Math.random() > Math.max(.55, sc)) continue; inflowP.push({ x: -4, sy: ys[q], y: ys[q] + rnd(-hw, hw) * .8 * sc, vx: rnd(90, 150) * (.7 + .3 * sc), vy: 0, life: rnd(1.6, 2.6), t: 0, w: rnd(1, 2.6) }); }
   for (let i = inflowP.length - 1; i >= 0; i--) {
     const p = inflowP[i]; p.t += dt; if (p.t > p.life) { inflowP.splice(i, 1); continue; }
-    const k = 1 - p.t / p.life; p.vx *= Math.exp(-dt * .9); p.vy += (p.y - sy) * dt * .5 + Math.sin(T * 2 + p.x * .03) * 6 * dt;
+    const k = 1 - p.t / p.life; p.vx *= Math.exp(-dt * .9); p.vy += (p.y - p.sy) * dt * .5 + Math.sin(T * 2 + p.x * .03) * 6 * dt;
     p.x += p.vx * dt; p.y += p.vy * dt;
     ctx.strokeStyle = `rgba(245,255,252,${.55 * k * Math.min(1, p.t * 4)})`; ctx.lineWidth = p.w;
     ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - p.vx * .09, p.y - p.vy * .09); ctx.stroke();
   }
-  const g = ctx.createRadialGradient(0, sy, 0, 0, sy, 130); g.addColorStop(0, 'rgba(235,255,250,.22)'); g.addColorStop(1, 'rgba(235,255,250,0)');
-  ctx.fillStyle = g; ctx.fillRect(0, sy - 130, 130, 260);
-  inRip -= dt; if (inRip <= 0) { inRip = .28; ripple(rnd(20, 90), sy + rnd(-hw, hw), rnd(16, 28), .35); }
+  for (let q = 0; q < 3; q++) {
+    const sy = ys[q], a = .22 * (q ? .75 : 1), g = ctx.createRadialGradient(0, sy, 0, 0, sy, 130); g.addColorStop(0, `rgba(235,255,250,${a})`); g.addColorStop(1, 'rgba(235,255,250,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, sy - 130, 130, 260);
+  }
+  inRip -= dt; if (inRip <= 0) { inRip = .2; const q = Math.floor(Math.random() * 3); ripple(rnd(20, 90), ys[q] + rnd(-hw, hw), rnd(16, 28), .35 * (q ? .8 : 1)); }
 }
 function savePads() { store.set('pads', pads.map(({ x, y, r, rot, notch, flower, ph, hue, drops }) => ({ x: x / W, y: y / H, r, rot, notch, flower, ph, hue, drops }))); }
 function loadPads() {
@@ -827,7 +832,7 @@ function clampPads() {
   for (const p of pads) {
     const lo = M + p.r * .4;
     p.x = Math.max(lo, Math.min(W - lo, p.x)); p.y = Math.max(lo, Math.min(H - lo, p.y));
-    if (p.x < 200 + p.r && Math.abs(p.y - H * .5) < 70 + p.r) p.x = 200 + p.r;
+    for (const iy of inletYs()) if (p.x < 200 + p.r && Math.abs(p.y - iy) < 70 + p.r) p.x = 200 + p.r;
     for (const o of obst) {
       if (!o.boulder) continue; const dx = p.x - o.x, dy = p.y - o.y, d = Math.hypot(dx, dy), Rr = o.r + p.r * .5;
       if (d < Rr && d > 1) { p.x = o.x + dx / d * Rr; p.y = o.y + dy / d * Rr; }
@@ -846,8 +851,8 @@ function makeEdge() {
   dock = null;
   // mossy boulders in the corners
   const B = Math.max(46, Math.min(120, Math.min(W, H) * .11));
-  const sp = [[B * .55, B * .5, 1.15], [B * .1, B * 1.65, .95], [B * 1.65, B * .1, .8], [W - B * .5, B * .7, 1.2], [W - B * 1.5, B * .05, .8], [W - B * .05, B * 1.9, .9],
-    [B * .2, H * .5 - (40 + B * .5), .75], [B * .2, H * .5 + (40 + B * .5), .75], [B * .6, H - B * .55, 1.25], [B * .1, H - B * 1.85, 1], [B * 1.9, H - B * .1, .85], [W - B * .6, H - B * .5, 1.2], [W - B * .1, H - B * 1.7, .95], [W - B * 1.7, H - B * .1, .8]];
+  const sp = [[B * .55, B * .5, 1.15], [B * .1, B * 1.15, .95], [B * 1.65, B * .1, .8], [W - B * .5, B * .7, 1.2], [W - B * 1.5, B * .05, .8], [W - B * .05, B * 1.9, .9],
+    [B * .2, H * .5 - (40 + B * .5), .75], [B * .2, H * .5 + (40 + B * .5), .75], [B * .6, H - B * .55, 1.25], [B * .1, H - B * 1.25, 1], [B * 1.9, H - B * .1, .85], [W - B * .6, H - B * .5, 1.2], [W - B * .1, H - B * 1.7, .95], [W - B * 1.7, H - B * .1, .8]];
   const boulders = sp.map(([x, y, m]) => ({ x, y, rx: B * m * rr(.95, 1.2), ry: B * m * rr(.8, 1) })).sort((a, b) => a.y - b.y);
   function drawBoulder(b) {
     const n = 12, pts = [];
