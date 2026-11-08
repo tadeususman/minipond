@@ -1041,6 +1041,7 @@ function loadEatBuf() {
   try { const bin = atob(document.getElementById('eatdata').textContent.trim()), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); actx.decodeAudioData(u8.buffer, b => { eatBuf = b; }, () => {}); } catch (e) {}
 }
 function nibbleSound(eat) {
+  return; // eating is silent
   if (!settings.sound || !soundUnlocked || !actx) return;
   if (!eatBuf) loadEatBuf();
   if (eatBuf) {
