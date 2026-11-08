@@ -1138,7 +1138,7 @@ function splashSound(under, k = 1) {
       const useB = splash2Buf && (lastSp === 0 ? Math.random() < .8 : lastSp === 1 ? Math.random() < .2 : Math.random() < .5); lastSp = useB ? 1 : 0; src.buffer = useB ? splash2Buf : eatBuf; src.playbackRate.value = (under ? rnd(.9, 1.1) : k >= .8 ? rnd(.95, 1.2) : rnd(.95, 1.3));
       const vr = .45 + Math.random() * .7; // each splash gets its own loudness
       g.gain.setValueAtTime(Math.min(.95, (under ? .5 : .4 + .55 * k) * vr), t);
-      const hp = actx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 220; src.connect(hp); let node = hp; // cuts the low thud
+      const hp = actx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = under ? 400 : 550; hp.Q.value = .7; src.connect(hp); let node = hp; // cuts the low thud
       if (under) { const lp = actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2200; hp.connect(lp); node = lp; }
       node.connect(g); g.connect(actx.destination); src.start(t); src.stop(t + 1.1); return;
     } catch (e) {}
@@ -1957,7 +1957,7 @@ $('bDive').onclick = async () => {
 resize(); addEventListener('resize', resize);
 const saved = store.get('fish', null);
 const seed = saved && saved.length ? saved : [
-  { name: 'Mochi', kind: 'kohaku' }, { name: 'Mentari', kind: 'ogon' }, { name: 'Arjuna', kind: 'showa' },
+  { name: 'Mochi', kind: 'kohaku' }, { name: 'Sunny', kind: 'ogon' }, { name: 'Runa', kind: 'showa' },
   { name: 'Sakura', kind: 'tancho' }, { name: 'Moka', kind: 'chagoi' }
 ];
 fishes = seed.map(d => new Fish(d));
