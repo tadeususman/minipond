@@ -436,7 +436,7 @@ function drawSplash(dt) {
 }
 
 // ---------- pond life: shrimp, crab on the floor, a frog on a lily pad ----------
-let shrimp = [], crab = null, frog = null, crInit = false;
+let shrimp = [], crab = null, frog = null, crInit = false, skipDraw = false;
 const scary = (x, y, R) => !dragPad && T - ptr.t < .3 && ptr.sp > 50 && Math.hypot(x - ptr.x, y - ptr.y) < R;
 function edgePoint() {
   const side = Math.floor(rnd(0, 4)), b = Math.min(W, H) * .16;
@@ -594,6 +594,7 @@ function drawFrog(dt) {
     if (f.away <= 0) { const [qx, qy] = padPos(p); f.sx = f.x; f.sy = f.y; f.tx = qx; f.ty = qy; f.jt = 0; f.jd = .6; f.state = 'return'; f.fa = Math.atan2(qy - f.y, qx - f.x); splash(f.x, f.y, .75); }
     return;
   }
+  if (skipDraw) return;
   // draw
   const air = f.state === 'sit' ? 0 : Math.sin(Math.min(1, f.jt / f.jd) * Math.PI), sc = 1 + .45 * air, a = f.fa, ca = Math.cos(a), sa = Math.sin(a);
   const X = f.x, Y = f.y, P = (fw, sd) => [X + ca * fw * sz - sa * sd * sz, Y + sa * fw * sz + ca * sd * sz];
@@ -1544,6 +1545,67 @@ function initDive() {
   }
   addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
 
+  // ---------- pond life underwater: shrimp and crab on the floor, a frog paddling after a hop ----------
+  const uGeo = new T3.SphereGeometry(1, 10, 8), cylGeo = new T3.CylinderGeometry(1, 1, 1, 6);
+  const shMat = new T3.MeshStandardMaterial({ color: '#efc7b0', roughness: .6, emissive: '#3a2218', emissiveIntensity: .3 });
+  const crMat = new T3.MeshStandardMaterial({ color: '#b86a52', roughness: .55, emissive: '#2a1008', emissiveIntensity: .25 });
+  const frMat = new T3.MeshStandardMaterial({ color: '#6fa04a', roughness: .6, emissive: '#10200a', emissiveIntensity: .2 });
+  const dark = new T3.MeshStandardMaterial({ color: '#1a1410', roughness: .4 }), cream3 = new T3.MeshStandardMaterial({ color: '#f0e6a8', roughness: .4 });
+  const antMat = new T3.LineBasicMaterial({ color: '#e6b9a2' });
+  let life3 = null;
+  const m3 = (x, y) => [(x / W - .5) * 24, (y / H - .5) * 24];
+  const mk = (geo, mat, par) => { const m = new T3.Mesh(geo, mat); par.add(m); return m; };
+  function buildLife() {
+    life3 = { sh: [], crab: null, frog: null };
+    for (const s of shrimp) {
+      const segs = Array.from({ length: 6 }, () => { const m = new T3.Mesh(uGeo, shMat); scene.add(m); return m; });
+      const fan = Array.from({ length: 3 }, () => { const m = new T3.Mesh(uGeo, shMat); scene.add(m); return m; });
+      const ant = [0, 1].map(() => { const g = new T3.BufferGeometry(); g.setAttribute('position', new T3.BufferAttribute(new Float32Array(9), 3)); const l = new T3.Line(g, antMat); l.frustumCulled = false; scene.add(l); return l; });
+      life3.sh.push({ s, segs, fan, ant });
+    }
+    const cg = new T3.Group(); scene.add(cg);
+    const body = mk(uGeo, crMat, cg); body.scale.set(.3, .14, .42);
+    const legs = [];
+    for (const sg of [-1, 1]) for (let i = 0; i < 3; i++) {
+      const pv = new T3.Group(); pv.position.set(.12 - i * .13, -.02, sg * .3); cg.add(pv);
+      const l = mk(cylGeo, crMat, pv); l.scale.set(.028, .5, .028); l.rotation.x = Math.PI / 2; l.position.z = sg * .22; legs.push({ pv, sg, i });
+    }
+    const claws = [-1, 1].map(sg => { const c = mk(uGeo, crMat, cg); c.scale.set(.2, .1, .15); c.position.set(.52, .02, sg * .27); const a = mk(uGeo, crMat, cg); a.scale.set(.15, .06, .06); a.position.set(.32, 0, sg * .32); mk(uGeo, dark, cg).scale.set(.03, .03, .03); return c; });
+    for (const sg of [-1, 1]) { const e = mk(uGeo, dark, cg); e.scale.setScalar(.035); e.position.set(.3, .15, sg * .12); }
+    life3.crab = { g: cg, legs, claws };
+    const fg = new T3.Group(); scene.add(fg);
+    const fb = mk(uGeo, frMat, fg); fb.scale.set(.5, .2, .32);
+    const fh = mk(uGeo, frMat, fg); fh.scale.set(.22, .15, .22); fh.position.set(.5, .02, 0);
+    for (const sg of [-1, 1]) { const e = mk(uGeo, cream3, fg); e.scale.setScalar(.075); e.position.set(.56, .15, sg * .13); const p = mk(uGeo, dark, fg); p.scale.setScalar(.035); p.position.set(.62, .16, sg * .13); }
+    const hl = [-1, 1].map(sg => { const pv = new T3.Group(); pv.position.set(-.3, -.02, sg * .24); fg.add(pv); const th = mk(cylGeo, frMat, pv); th.scale.set(.05, .38, .05); th.rotation.z = Math.PI / 2; th.position.x = -.18; const ft = mk(uGeo, frMat, pv); ft.scale.set(.2, .03, .09); ft.position.x = -.4; return pv; });
+    life3.frog = { g: fg, hl };
+  }
+  function updLife(dt, t) {
+    if (!crInit) initCritters();
+    T += dt;
+    for (const s of shrimp) updateShrimp(s, dt); updateCrab(crab, dt);
+    skipDraw = true; try { drawFrog(dt); } finally { skipDraw = false; }
+    if (!life3 || life3.sh.length !== shrimp.length) { if (life3) for (const o of [...life3.sh]) { for (const m of [...o.segs, ...o.fan, ...o.ant]) scene.remove(m); } buildLife(); }
+    const k = 24 / W * 2.4;
+    for (const o of life3.sh) {
+      const s = o.s, p = s.pts, n = p.length;
+      for (let j = 0; j < n; j++) { const [X, Z] = m3(p[j].x, p[j].y), r = (3.6 - 1.9 * j / (n - 1)) * s.sz * k; o.segs[j].position.set(X, floorH(X, Z) + r * .9 + .02, Z); o.segs[j].scale.set(r * 1.1, r * .8, r); }
+      const e = p[n - 1], te = Math.atan2(e.y - p[n - 2].y, e.x - p[n - 2].x);
+      o.fan.forEach((m, i) => { const d = (i - 1) * .5, [X, Z] = m3(e.x + Math.cos(te + d) * 3, e.y + Math.sin(te + d) * 3); m.position.set(X, floorH(X, Z) + .06, Z); m.scale.set(3.2 * k * s.sz, .02, 1.4 * k * s.sz); m.rotation.y = -(te + d); });
+      const [hx, hz] = m3(p[0].x, p[0].y), ca = Math.cos(s.a), sa = Math.sin(s.a), L = 24 * 24 / W * 2.4;
+      o.ant.forEach((l, i) => { const sg = i ? 1 : -1, a = l.geometry.attributes.position.array, w = Math.sin(t * 2 + s.ph + sg) * .08, y = floorH(hx, hz) + .17;
+        a[0] = hx; a[1] = y; a[2] = hz;
+        a[3] = hx + ca * L * .5 - sa * sg * (L * .3 + w); a[4] = y + .05; a[5] = hz + sa * L * .5 + ca * sg * (L * .3 + w);
+        a[6] = hx + ca * L - sa * sg * (L * .65 + w); a[7] = y + .02; a[8] = hz + sa * L + ca * sg * (L * .65 + w); l.geometry.attributes.position.needsUpdate = true; });
+    }
+    { const c = life3.crab, [X, Z] = m3(crab.x, crab.y), u = 24 / W * 16 * 1.7; c.g.scale.setScalar(u); c.g.position.set(X, floorH(X, Z) + .16 * u, Z); c.g.rotation.y = -crab.b;
+      for (const l of c.legs) l.pv.rotation.y = Math.sin(crab.ph * 2 + l.i * 1.9 + (l.sg > 0 ? 0 : Math.PI)) * .5 * (crab.v > 2 ? 1 : .1);
+      c.claws.forEach((m, i) => { m.position.x = .52 + Math.sin(crab.ph * .8 + i) * .03; }); }
+    { const f = life3.frog; const on = frog && frog.state === 'swim'; f.g.visible = !!on;
+      if (on) { const [X, Z] = m3(frog.x, frog.y); f.g.scale.setScalar(.6); f.g.position.set(X, SURF_Y - .9 + Math.sin(t * 1.2) * .12, Z); f.g.rotation.y = -frog.fa; f.g.rotation.z = Math.sin(t * 1.2) * .05;
+        f.hl.forEach((pv, i) => { pv.rotation.y = Math.sin(t * 5 + i * Math.PI) * .6; }); } }
+  }
+
   D = { scene, koi: [], food: [], makeKoi, buildPads, t: 0, jumpT: rnd(6, 10), last: 0, nk: settings.night ? 1 : 0, rk: settings.rain ? 1 : 0, curious: new T3.Vector3(), amb: null, saveAcc: 0,
     frame(dt) {
       const t = (D.t += dt); U.uT.value = t;
@@ -1582,6 +1644,7 @@ function initDive() {
       }
       D.jumpT -= dt; if (D.jumpT <= 0) { tryJump(); D.jumpT = rnd(18, 40); }
       step3D(dt);
+      updLife(dt, t);
       for (const k of D.koi) updKoi(k, dt, t);
       renderer.render(scene, camera);
       for (const k of D.koi) {
