@@ -415,7 +415,7 @@ function splash(x, y, k = 1) {
 // a small flick of water: droplets thrown up and out, with only a faint ring where they land
 function nibble(x, y, n = 11, k = 1) {
   for (let i = 0; i < n; i++) { const a = rnd(0, TAU), sp = rnd(18, 72) * k; drops2.push({ x: x + Math.cos(a) * 2, y: y + Math.sin(a) * 2, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, z: rnd(1, 4), vz: rnd(55, 120) * k }); }
-  ripple(x, y, 18 * k, .3); splashSound(false);
+  ripple(x, y, 18 * k, .3); nibbleSound(n > 8);
 }
 function drawSplash(dt) {
   for (let i = splashes.length - 1; i >= 0; i--) {
@@ -1019,6 +1019,32 @@ function splashSound(under) {
     const bp = actx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = under ? 400 : 1400; bp.Q.value = .6;
     const g = actx.createGain(); g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(under ? .14 : .22, t + .03); g.gain.exponentialRampToValueAtTime(.0001, t + .55);
     src.connect(bp); bp.connect(g); g.connect(actx.destination); src.start(t); src.stop(t + .6);
+  } catch (e) {}
+}
+// fish taking a pellet at the surface: a wet 'bloop' of a bubble, a tiny crisp spray, and a soft gulp
+function nibbleSound(eat) {
+  if (!settings.sound || !soundUnlocked || !actx) return;
+  try {
+    if (!splashBuf) { const len = actx.sampleRate, b = actx.createBuffer(1, len, actx.sampleRate), d = b.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1; splashBuf = b; }
+    const t = actx.currentTime + .005, out = actx.destination;
+    const spray = (dur, f, lvl) => {
+      const src = actx.createBufferSource(); src.buffer = splashBuf; src.playbackRate.value = rnd(.8, 1.2);
+      const hp = actx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1800;
+      const bp = actx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f * rnd(.85, 1.15); bp.Q.value = 1.1;
+      const g = actx.createGain(); g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(lvl, t + .006); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      src.connect(hp); hp.connect(bp); bp.connect(g); g.connect(out); src.start(t, rnd(0, .5)); src.stop(t + dur + .02);
+    };
+    if (eat) {
+      const o = actx.createOscillator(), g = actx.createGain(), f0 = rnd(420, 640);
+      o.type = 'sine'; o.frequency.setValueAtTime(f0, t + .012); o.frequency.exponentialRampToValueAtTime(f0 * 2.4, t + .09);
+      g.gain.setValueAtTime(.0001, t + .012); g.gain.exponentialRampToValueAtTime(.085, t + .028); g.gain.exponentialRampToValueAtTime(.0001, t + .16);
+      o.connect(g); g.connect(out); o.start(t + .012); o.stop(t + .18);
+      const o2 = actx.createOscillator(), g2 = actx.createGain();
+      o2.type = 'sine'; o2.frequency.setValueAtTime(190, t); o2.frequency.exponentialRampToValueAtTime(110, t + .09);
+      g2.gain.setValueAtTime(.0001, t); g2.gain.exponentialRampToValueAtTime(.05, t + .012); g2.gain.exponentialRampToValueAtTime(.0001, t + .11);
+      o2.connect(g2); g2.connect(out); o2.start(t); o2.stop(t + .13);
+      spray(.07, 3600, .07);
+    } else spray(.05, 4200, .045);
   } catch (e) {}
 }
 function plop() {
