@@ -1805,7 +1805,7 @@ function loadAmbBuf() {
   ambLoading = new Promise((res, rej) => actx.decodeAudioData(u8.buffer, b => res(ambBuf = b), rej));
   return ambLoading;
 }
-const AMB_RATE = .8;
+const AMB_RATE = .68;
 const AMB_LEVEL = () => diving ? 1.3 : 1.5, AMB_LP = () => diving ? 650 : 9000;
 function playAmbLoop(a, when) {
   if (amb !== a) return;
