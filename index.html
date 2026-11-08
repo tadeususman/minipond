@@ -449,6 +449,7 @@ function drawSplash(dt) {
 }
 
 // ---------- pond life: shrimp, crab on the floor, a frog on a lily pad ----------
+const rainDrops = [], rainSplat = [];
 let shrimp = [], crab = null, crab2 = null, frog = null, crInit = false, skipDraw = false;
 const scary = (x, y, R) => !dragPad && T - ptr.t < .3 && ptr.sp > 50 && Math.hypot(x - ptr.x, y - ptr.y) < R;
 function edgePoint() {
@@ -999,6 +1000,26 @@ function loop(now) {
   drawInflow(dt);
   drawEdge();
   if (settings.rain) { ctx.fillStyle = 'rgba(40,60,75,.16)'; ctx.fillRect(0, 0, W, H); }
+  if (settings.rain) {
+    const want = Math.round(W * H / 3600 * (Q >= 2 ? 1 : Q === 1 ? .55 : .3));
+    while (rainDrops.length < want) rainDrops.push({ x: rnd(0, W), y: rnd(0, H), t: -rnd(0, .5), sp: rnd(2.6, 4.2), l: rnd(.7, 1.3) });
+    if (rainDrops.length > want) rainDrops.length = want;
+    ctx.save(); ctx.lineCap = 'round'; ctx.lineWidth = 1.4;
+    for (const d of rainDrops) {
+      d.t += dt * d.sp;
+      if (d.t >= 1) { if (Math.random() < .55) ripple(d.x, d.y, rnd(7, 16), .4); rainSplat.push({ x: d.x, y: d.y, a: .8 }); d.x = rnd(0, W); d.y = rnd(0, H); d.t = -rnd(0, .4); d.sp = rnd(2.6, 4.2); d.l = rnd(.7, 1.3); continue; }
+      if (d.t < 0) continue;
+      const k = 1 - d.t, hx = d.x - 26 * k * 1.2, hy = d.y - 70 * k * 1.2, ln = 16 * d.l;
+      ctx.strokeStyle = `rgba(220,238,246,${.2 + .5 * d.t})`;
+      ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(hx - 26 / 75 * ln, hy - 70 / 75 * ln); ctx.stroke();
+    }
+    for (let i = rainSplat.length - 1; i >= 0; i--) {
+      const sp = rainSplat[i]; sp.a -= dt * 3.2; if (sp.a <= 0) { rainSplat.splice(i, 1); continue; }
+      const r = 1.2 + (.8 - sp.a) * 5; ctx.strokeStyle = `rgba(235,248,252,${sp.a * .85})`; ctx.beginPath(); ctx.arc(sp.x, sp.y, r, 0, TAU); ctx.stroke();
+      ctx.fillStyle = `rgba(245,252,255,${sp.a * .5})`; ctx.beginPath(); ctx.arc(sp.x, sp.y, 1, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+  }
   if (settings.night) {
     ctx.fillStyle = 'rgba(6,12,42,.6)'; ctx.fillRect(0, 0, W, H);
     const mg = ctx.createRadialGradient(W * .72, H * .28, 0, W * .72, H * .28, Math.min(W, H) * .22);
