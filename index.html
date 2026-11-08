@@ -177,7 +177,11 @@ class Fish {
     if (chase) { dvx += (chase.x - this.x) / best * 4; dvy += (chase.y - this.y) / best * 4; }
     let diff = Math.atan2(dvy, dvx) - this.a; diff = Math.atan2(Math.sin(diff), Math.cos(diff));
     const tr = (this.fleeT > 0 ? 4.5 : chase ? 2.6 : 0.9) * dt; this.a += Math.max(-tr, Math.min(tr, diff));
-    let target = chase ? 80 + Math.min(30, 3000 / (best + 30)) : this.cruise * (.7 + .4 * Math.sin(T * .35 + this.seed));
+    // each koi drifts between lazy glides, steady swimming and short bursts, on its own random schedule
+    if (this.spMul === undefined) { this.spMul = rnd(.8, 1.1); this.spGoal = this.spMul; this.spT = rnd(0, 4); }
+    if ((this.spT -= dt) <= 0) { this.spT = rnd(2, 7); const r = Math.random(); this.spGoal = r < .18 ? rnd(.3, .55) : r > .84 ? rnd(1.45, 1.9) : rnd(.7, 1.25); }
+    this.spMul += (this.spGoal - this.spMul) * Math.min(1, dt * (this.spGoal > this.spMul ? 1.4 : .6));
+    let target = chase ? 80 + Math.min(30, 3000 / (best + 30)) : this.cruise * (.75 + .3 * Math.sin(T * .35 + this.seed)) * this.spMul;
     if (chase && best < 60 && this.depth > .25) target = 14; // wait below the pellet until risen
     if (this.jump) target = 115;
     if (this.fleeT > 0) target = Math.max(target, 135);
