@@ -1046,7 +1046,7 @@ function nibbleSound(eat) {
     try {
       const t = actx.currentTime, src = actx.createBufferSource(), g = actx.createGain();
       src.buffer = eatBuf; src.playbackRate.value = eat ? rnd(.95, 1.2) : rnd(1.3, 1.6);
-      g.gain.setValueAtTime(eat ? .55 : .3, t); if (!eat) g.gain.exponentialRampToValueAtTime(.0001, t + .3);
+      g.gain.setValueAtTime(eat ? .2 : .12, t); if (!eat) g.gain.exponentialRampToValueAtTime(.0001, t + .3);
       src.connect(g); g.connect(actx.destination); src.start(t); src.stop(t + (eat ? .9 : .35)); return;
     } catch (e) {}
   }
