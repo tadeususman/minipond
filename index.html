@@ -903,7 +903,7 @@ function makeLeaves() {
 let sakura = [];
 function makeSakura() {
   const sc = Math.max(.7, Math.min(1.3, Math.min(W, H) / 700));
-  sakura = Array.from({ length: 11 }, (_, i) => ({ x: rnd(0, W), y: rnd(0, H), rot: rnd(0, TAU), s: (i < 5 ? rnd(12, 17) : rnd(5.5, 8)) * sc, ph: rnd(0, TAU), flower: i < 5, tilt: rnd(.5, 1) }));
+  sakura = Array.from({ length: 16 }, () => ({ x: rnd(0, W), y: rnd(0, H), rot: rnd(0, TAU), s: rnd(10, 15) * sc, ph: rnd(0, TAU), flower: false, tilt: rnd(.65, 1) }));
 }
 function sakuraPetal(s) {
   ctx.beginPath(); ctx.moveTo(0, 0);
