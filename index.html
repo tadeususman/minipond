@@ -1548,11 +1548,11 @@ function initDive() {
 
   // ---------- pond life underwater: shrimp and crab on the floor, a frog paddling after a hop ----------
   const uGeo = new T3.SphereGeometry(1, 10, 8), cylGeo = new T3.CylinderGeometry(1, 1, 1, 6);
-  const shMat = new T3.MeshStandardMaterial({ color: '#efc7b0', roughness: .6, emissive: '#3a2218', emissiveIntensity: .3 });
+  const shMat = new T3.MeshStandardMaterial({ color: '#d27a58', roughness: .5, emissive: '#4a1c0e', emissiveIntensity: .35 });
   const crMat = new T3.MeshStandardMaterial({ color: '#b86a52', roughness: .55, emissive: '#2a1008', emissiveIntensity: .25 });
   const frMat = new T3.MeshStandardMaterial({ color: '#6fa04a', roughness: .6, emissive: '#10200a', emissiveIntensity: .2 });
   const dark = new T3.MeshStandardMaterial({ color: '#1a1410', roughness: .4 }), cream3 = new T3.MeshStandardMaterial({ color: '#f0e6a8', roughness: .4 });
-  const antMat = new T3.LineBasicMaterial({ color: '#e6b9a2' });
+  const antMat = new T3.LineBasicMaterial({ color: '#e08a68' });
   let life3 = null;
   const m3 = (x, y) => [(x / W - .5) * 24, (y / H - .5) * 24];
   const mk = (geo, mat, par) => { const m = new T3.Mesh(geo, mat); par.add(m); return m; };
@@ -1569,7 +1569,10 @@ function initDive() {
     const legs = [];
     for (const sg of [-1, 1]) for (let i = 0; i < 3; i++) {
       const pv = new T3.Group(); pv.position.set(.12 - i * .13, -.02, sg * .3); cg.add(pv);
-      const l = mk(cylGeo, crMat, pv); l.scale.set(.028, .5, .028); l.rotation.x = Math.PI / 2; l.position.z = sg * .22; legs.push({ pv, sg, i });
+      const seg = (a, b) => { const m = mk(cylGeo, crMat, pv), v = new T3.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]); m.scale.set(.03, v.length(), .03); m.position.set((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2); m.quaternion.setFromUnitVectors(new T3.Vector3(0, 1, 0), v.normalize()); };
+      const kn = [0, .15, sg * .2];
+      seg([0, 0, 0], kn); seg(kn, [0.05 * (1 - i), -.15, sg * .4]); mk(uGeo, crMat, pv).scale.setScalar(.035);
+      legs.push({ pv, sg, i });
     }
     const claws = [-1, 1].map(sg => { const c = mk(uGeo, crMat, cg); c.scale.set(.2, .1, .15); c.position.set(.52, .02, sg * .27); const a = mk(uGeo, crMat, cg); a.scale.set(.15, .06, .06); a.position.set(.32, 0, sg * .32); mk(uGeo, dark, cg).scale.set(.03, .03, .03); return c; });
     for (const sg of [-1, 1]) { const e = mk(uGeo, dark, cg); e.scale.setScalar(.035); e.position.set(.3, .15, sg * .12); }
@@ -1587,13 +1590,13 @@ function initDive() {
     for (const s of shrimp) updateShrimp(s, dt); updateCrab(crab, dt);
     skipDraw = true; try { drawFrog(dt); } finally { skipDraw = false; }
     if (!life3 || life3.sh.length !== shrimp.length) { if (life3) for (const o of [...life3.sh]) { for (const m of [...o.segs, ...o.fan, ...o.ant]) scene.remove(m); } buildLife(); }
-    const k = 24 / W * 2.4;
+    const k = 24 / W * 1.4;
     for (const o of life3.sh) {
       const s = o.s, p = s.pts, n = p.length;
       for (let j = 0; j < n; j++) { const [X, Z] = m3(p[j].x, p[j].y), r = (3.6 - 1.9 * j / (n - 1)) * s.sz * k; o.segs[j].position.set(X, floorH(X, Z) + r * .9 + .02, Z); o.segs[j].scale.set(r * 1.1, r * .8, r); }
       const e = p[n - 1], te = Math.atan2(e.y - p[n - 2].y, e.x - p[n - 2].x);
       o.fan.forEach((m, i) => { const d = (i - 1) * .5, [X, Z] = m3(e.x + Math.cos(te + d) * 3, e.y + Math.sin(te + d) * 3); m.position.set(X, floorH(X, Z) + .06, Z); m.scale.set(3.2 * k * s.sz, .02, 1.4 * k * s.sz); m.rotation.y = -(te + d); });
-      const [hx, hz] = m3(p[0].x, p[0].y), ca = Math.cos(s.a), sa = Math.sin(s.a), L = 24 * 24 / W * 2.4;
+      const [hx, hz] = m3(p[0].x, p[0].y), ca = Math.cos(s.a), sa = Math.sin(s.a), L = 24 * 24 / W * 1.4;
       o.ant.forEach((l, i) => { const sg = i ? 1 : -1, a = l.geometry.attributes.position.array, w = Math.sin(t * 2 + s.ph + sg) * .08, y = floorH(hx, hz) + .17;
         a[0] = hx; a[1] = y; a[2] = hz;
         a[3] = hx + ca * L * .5 - sa * sg * (L * .3 + w); a[4] = y + .05; a[5] = hz + sa * L * .5 + ca * sg * (L * .3 + w);
