@@ -411,7 +411,7 @@ function splash(x, y, k = 1) {
   ripple(x, y, 46 * k, .7); ripple(x, y, 78 * k, .55); ripple(x, y, 112 * k, .4);
   splashes.push({ x, y, t: 0, k });
   for (let i = 0; i < 16; i++) { const a = rnd(0, TAU), sp = rnd(30, 110) * k; drops2.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, z: rnd(2, 8), vz: rnd(70, 150) }); }
-  splashSound(false);
+  splashSound(false, k);
 }
 // a small flick of water: droplets thrown up and out, with only a faint ring where they land
 function nibble(x, y, n = 11, k = 1) {
@@ -1012,8 +1012,19 @@ function save() { store.set('fish', fishes.map(f => f.data())); dirty = false; }
 // ---------- sound ----------
 let actx = null;
 let splashBuf = null;
-function splashSound(under) {
+function splashSound(under, k = 1) {
   if (!settings.sound || !soundUnlocked || !actx) return;
+  if (!eatBuf) loadEatBuf();
+  if (eatBuf) {
+    try {
+      const t = actx.currentTime, src = actx.createBufferSource(), g = actx.createGain();
+      src.buffer = eatBuf; src.playbackRate.value = (under ? .8 : k >= .8 ? rnd(.72, .88) : rnd(.95, 1.15));
+      g.gain.setValueAtTime(under ? .5 : Math.min(.95, .4 + .55 * k), t);
+      let node = src;
+      if (under) { const lp = actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 800; src.connect(lp); node = lp; }
+      node.connect(g); g.connect(actx.destination); src.start(t); src.stop(t + 1.1); return;
+    } catch (e) {}
+  }
   try {
     if (!splashBuf) { const len = actx.sampleRate, b = actx.createBuffer(1, len, actx.sampleRate), d = b.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1; splashBuf = b; }
     const t = actx.currentTime, src = actx.createBufferSource(); src.buffer = splashBuf;
