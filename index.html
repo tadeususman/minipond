@@ -1189,7 +1189,7 @@ let diving = false, D = null, diveBusy = false, amb = null, soundUnlocked = fals
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const fade = $('fade');
 const HINT_TOP = 'Tap to feed · sweep the water to scatter the koi · drag a lily to move it';
-const HINT_DIVE = 'Drag to look around · tap to drop food · tap a fish to see its name';
+const HINT_DIVE = 'Drag to look around · tap a fish to see its name';
 function showHint(t) { hint.textContent = t; hint.style.opacity = '1'; }
 function loadThree() {
   return new Promise((res, rej) => {
@@ -1281,11 +1281,18 @@ function initDive() {
   const sg = new T3.PlaneGeometry(80, 80, 1, 1); sg.rotateX(Math.PI / 2);
   const surf = new T3.Mesh(sg, new T3.ShaderMaterial({ uniforms: U, side: T3.DoubleSide, vertexShader: VS_WORLD, fragmentShader: `
     uniform float uT; uniform float uLight; uniform float uRain; ${GLSL_FOG} varying vec3 vW; varying vec2 vUv;
+    float h21(vec2 q){ return fract(sin(dot(q,vec2(127.1,311.7)))*43758.5453); }
+    float vn(vec2 q){ vec2 i=floor(q), f=fract(q); f=f*f*(3.-2.*f); return mix(mix(h21(i),h21(i+vec2(1,0)),f.x),mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),f.x),f.y); }
+    float hgt(vec2 q){ return vn(q*.55+vec2(uT*.07,-uT*.05))*.9+vn(q*1.4+vec2(-uT*.16,uT*.1))*.5+vn(q*3.1+vec2(uT*.3,uT*.22))*.22; }
     void main(){ vec2 p=vW.xz; vec2 pf=p-vec2(uT*.6,0.); float w=sin(pf.x*1.3+uT*1.2)*sin(pf.y*1.1-uT)+.5*sin(pf.x*2.7-uT*1.7+pf.y*1.9);
+      float e=.12; float h0=hgt(p); vec2 gr=vec2(hgt(p+vec2(e,0.))-h0,hgt(p+vec2(0.,e))-h0)/e;
+      float facet=clamp(.5+gr.x*.55-gr.y*.35,0.,1.);
+      float pch=vn(p*.22+vec2(uT*.03,0.));
       float foam=smoothstep(4.5,0.,length(p-vec2(-11.5,0.)))*(.5+.3*sin(uT*9.+p.x*5.+p.y*3.));
       float r=uRain*pow(max(0.,sin(p.x*7.+uT*5.)*sin(p.y*6.3-uT*4.)),14.)*2.;
       float win=smoothstep(10.,1.5,length(p-uCam.xz));
-      vec3 c=mix(uFog*1.25, vec3(.82,1.,.95)*(.4+.6*uLight), .3+.55*win)*(.85+.15*w)+r+foam*.6*(.4+.6*uLight);
+      vec3 base=mix(uFog*.95, vec3(.82,1.,.95)*(.4+.6*uLight), .22+.5*win);
+      vec3 c=base*(.62+.5*facet+.18*w)*(.8+.4*pch)+vec3(.9,1.,.95)*pow(facet,5.)*.22*(.4+.6*uLight)*(.4+.6*win)+r+foam*.6*(.4+.6*uLight);
       float d=length(vW-uCam); float f=1.-exp(-uDen*uDen*d*d*.35);
       gl_FragColor=vec4(mix(c,uFog,clamp(f,0.,1.)),1.); }` }));
   surf.position.y = SURF_Y; scene.add(surf);
@@ -1538,11 +1545,6 @@ function initDive() {
     ndc.set(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera);
     const hits = ray.intersectObjects(D.koi.map(k => k.body), false);
     if (hits.length) { const k = D.koi.find(k => k.body === hits[0].object); if (k) k.label = 2.6; return; }
-    const p = ray.ray.origin.clone().add(ray.ray.direction.clone().multiplyScalar(3.2)); p.y = Math.min(p.y, SURF_Y - .3);
-    for (let i = 0; i < 5 && D.food.length < 80; i++) {
-      const m = new T3.Mesh(pelletGeo, pelletMat); m.position.set(p.x + rnd(-.2, .2), p.y + rnd(-.1, .1), p.z + rnd(-.2, .2));
-      scene.add(m); D.food.push({ m, v: rnd(.12, .22), ph: rnd(0, TAU), life: 8 });
-    }
     hint.style.opacity = '0';
   }
   addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
