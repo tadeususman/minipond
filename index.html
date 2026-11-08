@@ -498,7 +498,10 @@ function updateShrimp(s, dt) {
   for (let i = 1; i < p.length; i++) {
     const ref = i === 1 ? s.a + Math.PI : Math.atan2(p[i - 1].y - p[i - 2].y, p[i - 1].x - p[i - 2].x);
     const ang = ref + curl * (i / p.length) * Math.sin(s.ph * .4 + 1) * (s.flee > 0 ? 1 : .5) + (s.flee > 0 ? .3 * i : 0);
-    p[i].x += (p[i - 1].x + Math.cos(ang) * L - p[i].x) * Math.min(1, dt * 14); p[i].y += (p[i - 1].y + Math.sin(ang) * L - p[i].y) * Math.min(1, dt * 14);
+    const fk = Math.min(1, dt * (s.flee > 0 ? 34 : 18)); p[i].x += (p[i - 1].x + Math.cos(ang) * L - p[i].x) * fk; p[i].y += (p[i - 1].y + Math.sin(ang) * L - p[i].y) * fk;
+    // keep every segment linked to the one before it, so fast darts never pull the body apart
+    const ddx = p[i].x - p[i - 1].x, ddy = p[i].y - p[i - 1].y, dd = Math.hypot(ddx, ddy), mx = L * 1.08;
+    if (dd > mx) { p[i].x = p[i - 1].x + ddx / dd * mx; p[i].y = p[i - 1].y + ddy / dd * mx; }
   }
 }
 function drawShrimp(s) {
