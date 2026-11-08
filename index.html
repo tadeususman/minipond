@@ -161,7 +161,7 @@ class Fish {
       const px = this.x - ptr.x, py = this.y - ptr.y, pd = Math.hypot(px, py), Rf = 150 + Math.min(110, ptr.sp * .1) + this.size * .4;
       if (pd < Rf && pd > 1) { const w = Math.pow(1 - pd / Rf, .6) * 7; dvx += px / pd * w; dvy += py / pd * w; this.fleeT = .9; }
     }
-    this.wk = (this.wk || 0) - dt; if (this.fleeT > 0 && this.wk <= 0) { this.wk = .07; wake(this.x + Math.cos(this.a) * this.size * .25, this.y + Math.sin(this.a) * this.size * .25, this.a, Math.min(1.6, this.size / 70)); }
+    this.wk = (this.wk || 0) - dt; if (this.fleeT > 0 && this.wk <= 0) { this.wk = .07; wake(this.x + Math.cos(this.a) * this.size * .25, this.y + Math.sin(this.a) * this.size * .25, this.a, Math.min(1.6, this.size / 70), this.seed); }
     for (const o of obst) {
       const ox = this.x - o.x, oy = this.y - o.y, od = Math.hypot(ox, oy), Ro = o.r + this.size * .55;
       if (od < Ro && od > 1) { const w = (Ro - od) / Ro * 3; dvx += ox / od * w; dvy += oy / od * w; }
@@ -309,7 +309,7 @@ function flowAt(x, y, t) {
   return FL;
 }
 let wakes = [];
-function wake(x, y, a, sz) { if (wakes.length < 140) wakes.push({ x, y, a, sz, t: 0 }); }
+function wake(x, y, a, sz, id) { if (wakes.length < 140) wakes.push({ x, y, a, sz, id, t: 0 }); }
 let streaks = [], foamAcc = 0;
 function resetStreak(s, edge) {
   s.x = edge ? M + rnd(-20, 0) : rnd(M, W - M); s.y = rnd(M, H - M);
@@ -984,19 +984,33 @@ function loop(now) {
   // V-shaped wakes trailing behind swimmers (and the sweeping hand)
   ctx.lineCap = 'round';
   for (let i = wakes.length - 1; i >= 0; i--) {
-    const w = wakes[i]; w.t += dt; const life = 1.3, k = 1 - w.t / life;
-    if (k <= 0) { wakes.splice(i, 1); continue; }
+    const w = wakes[i]; w.t += dt;
+    if (w.t >= 1.3) { wakes.splice(i, 1); continue; }
     flowAt(w.x, w.y, T); w.x += FL.x * dt * .4; w.y += FL.y * dt * .4;
-    const ca = Math.cos(w.a), sa = Math.sin(w.a), lat = (4 + w.t * 22) * w.sz, len = (22 + w.t * 22) * w.sz, wob = Math.sin(w.t * 5 + w.x * .05) * .5 + .5;
-    ctx.lineWidth = 1.3 * k + .4;
-    for (const sg of [-1, 1]) {
-      const px = w.x - sa * sg * lat, py = w.y + ca * sg * lat;
-      const pt = (b, o) => [px - ca * b - sa * sg * o, py - sa * b + ca * sg * o];
-      const c1 = pt(len * .3, len * (.02 + .16 * wob)), c2 = pt(len * .65, len * (.3 - .14 * wob)), e = pt(len, len * (.2 + .2 * wob));
-      ctx.strokeStyle = `rgba(240,255,250,${.3 * k})`;
-      ctx.beginPath(); ctx.moveTo(px, py); ctx.bezierCurveTo(c1[0], c1[1], c2[0], c2[1], e[0], e[1]); ctx.stroke();
-    }
   }
+  // wakes are drawn as two smooth ribbons following the fish's path, so sharp turns bend smoothly instead of fanning out
+  { let run = []; ctx.lineCap = 'butt';
+    const flush = () => {
+      const n = run.length; if (n >= 3) {
+        const dir = run.map((w, i) => { const a = run[Math.max(0, i - 1)], b = run[Math.min(n - 1, i + 1)]; return Math.atan2(b.y - a.y, b.x - a.x); });
+        for (const sg of [-1, 1]) {
+          const P = run.map((w, i) => { const lat = (4 + w.t * 20) * w.sz * 1.1; return [w.x - Math.sin(dir[i]) * sg * lat, w.y + Math.cos(dir[i]) * sg * lat]; });
+          for (let i = 1; i < n - 1; i++) {
+            const k = 1 - run[i].t / 1.3; if (k <= 0) continue;
+            ctx.lineWidth = 1.3 * k + .4; ctx.strokeStyle = `rgba(240,255,250,${.34 * k})`;
+            ctx.beginPath(); ctx.moveTo((P[i - 1][0] + P[i][0]) / 2, (P[i - 1][1] + P[i][1]) / 2);
+            ctx.quadraticCurveTo(P[i][0], P[i][1], (P[i][0] + P[i + 1][0]) / 2, (P[i][1] + P[i + 1][1]) / 2); ctx.stroke();
+          }
+        }
+      }
+      run = [];
+    };
+    for (const w of wakes) {
+      const l = run[run.length - 1];
+      if (l && (l.id !== w.id || Math.hypot(l.x - w.x, l.y - w.y) > 70)) flush();
+      run.push(w);
+    }
+    flush(); ctx.lineCap = 'round'; }
   for (const p of pads) drawPad(p, T, dt);
   drawFrog(dt);
   drawLeaves(dt);
