@@ -1562,7 +1562,8 @@ function initDive() {
       const segs = Array.from({ length: 6 }, () => { const m = new T3.Mesh(uGeo, shMat); scene.add(m); return m; });
       const fan = Array.from({ length: 3 }, () => { const m = new T3.Mesh(uGeo, shMat); scene.add(m); return m; });
       const ant = [0, 1].map(() => { const g = new T3.BufferGeometry(); g.setAttribute('position', new T3.BufferAttribute(new Float32Array(9), 3)); const l = new T3.Line(g, antMat); l.frustumCulled = false; scene.add(l); return l; });
-      life3.sh.push({ s, segs, fan, ant });
+      const eyes = [0, 1].map(() => { const m = new T3.Mesh(uGeo, dark); scene.add(m); return m; });
+      life3.sh.push({ s, segs, fan, ant, eyes });
     }
     const cg = new T3.Group(); scene.add(cg);
     const body = mk(uGeo, crMat, cg); body.scale.set(.3, .14, .42);
@@ -1589,11 +1590,13 @@ function initDive() {
     T += dt;
     for (const s of shrimp) updateShrimp(s, dt); updateCrab(crab, dt);
     skipDraw = true; try { drawFrog(dt); } finally { skipDraw = false; }
-    if (!life3 || life3.sh.length !== shrimp.length) { if (life3) for (const o of [...life3.sh]) { for (const m of [...o.segs, ...o.fan, ...o.ant]) scene.remove(m); } buildLife(); }
+    if (!life3 || life3.sh.length !== shrimp.length) { if (life3) for (const o of [...life3.sh]) { for (const m of [...o.segs, ...o.fan, ...o.ant, ...o.eyes]) scene.remove(m); } buildLife(); }
     const k = 24 / W * 1.4;
     for (const o of life3.sh) {
       const s = o.s, p = s.pts, n = p.length;
       for (let j = 0; j < n; j++) { const [X, Z] = m3(p[j].x, p[j].y), r = (3.6 - 1.9 * j / (n - 1)) * s.sz * k; o.segs[j].position.set(X, floorH(X, Z) + r * .9 + .02, Z); o.segs[j].scale.set(r * 1.1, r * .8, r); }
+      { const [hx0, hz0] = m3(p[0].x, p[0].y), r0 = 3.6 * s.sz * k, c0 = Math.cos(s.a), s0 = Math.sin(s.a), y0 = floorH(hx0, hz0) + r0 * 1.5;
+        o.eyes.forEach((m, i) => { const sg = i ? 1 : -1; m.position.set(hx0 + c0 * r0 * .75 - s0 * sg * r0 * .55, y0, hz0 + s0 * r0 * .75 + c0 * sg * r0 * .55); m.scale.setScalar(r0 * .32); }); }
       const e = p[n - 1], te = Math.atan2(e.y - p[n - 2].y, e.x - p[n - 2].x);
       o.fan.forEach((m, i) => { const d = (i - 1) * .5, [X, Z] = m3(e.x + Math.cos(te + d) * 3, e.y + Math.sin(te + d) * 3); m.position.set(X, floorH(X, Z) + .06, Z); m.scale.set(3.2 * k * s.sz, .02, 1.4 * k * s.sz); m.rotation.y = -(te + d); });
       const [hx, hz] = m3(p[0].x, p[0].y), ca = Math.cos(s.a), sa = Math.sin(s.a), L = 24 * 24 / W * 1.4;
