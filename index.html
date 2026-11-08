@@ -184,7 +184,7 @@ class Fish {
       dp[i].x = p[i].x - Math.sin(a) * off; dp[i].y = p[i].y + Math.cos(a) * off;
     }
     if (chase && best < this.width + 7 && this.depth < .25) {
-      food.splice(food.indexOf(chase), 1); ripple(chase.x, chase.y, 22, .55); splash(chase.x, chase.y, .3);
+      food.splice(food.indexOf(chase), 1); nibble(chase.x, chase.y, 13, 1.1);
       this.eaten++; this.size = Math.min(125, this.size + .5); dirty = true;
     }
     if (!chase && Math.random() < dt * .03) ripple(this.x + Math.cos(this.a) * 6, this.y + Math.sin(this.a) * 6, 16);
@@ -412,6 +412,11 @@ function splash(x, y, k = 1) {
   for (let i = 0; i < 16; i++) { const a = rnd(0, TAU), sp = rnd(30, 110) * k; drops2.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, z: rnd(2, 8), vz: rnd(70, 150) }); }
   splashSound(false);
 }
+// a small flick of water: droplets thrown up and out, with only a faint ring where they land
+function nibble(x, y, n = 11, k = 1) {
+  for (let i = 0; i < n; i++) { const a = rnd(0, TAU), sp = rnd(18, 72) * k; drops2.push({ x: x + Math.cos(a) * 2, y: y + Math.sin(a) * 2, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, z: rnd(1, 4), vz: rnd(55, 120) * k }); }
+  ripple(x, y, 18 * k, .3); splashSound(false);
+}
 function drawSplash(dt) {
   for (let i = splashes.length - 1; i >= 0; i--) {
     const s = splashes[i]; s.t += dt; const p = s.t / .55;
@@ -427,6 +432,199 @@ function drawSplash(dt) {
     ctx.fillStyle = 'rgba(0,25,30,.18)'; ctx.beginPath(); ctx.arc(d.x + d.z * .3, d.y + d.z * .45, r, 0, TAU); ctx.fill();
     ctx.fillStyle = 'rgba(245,255,252,.9)'; ctx.beginPath(); ctx.arc(d.x, d.y - d.z * .15, r, 0, TAU); ctx.fill();
   }
+}
+
+// ---------- pond life: shrimp, crab on the floor, a frog on a lily pad ----------
+let shrimp = [], crab = null, frog = null, crInit = false;
+const scary = (x, y, R) => !dragPad && T - ptr.t < .3 && ptr.sp > 50 && Math.hypot(x - ptr.x, y - ptr.y) < R;
+function edgePoint() {
+  const side = Math.floor(rnd(0, 4)), b = Math.min(W, H) * .16;
+  for (let k = 0; k < 20; k++) {
+    let x = rnd(M + 30, W - M - 30), y = rnd(M + 30, H - M - 30);
+    if (side === 0) x = M + rnd(30, b); else if (side === 1) x = W - M - rnd(30, b); else if (side === 2) y = M + rnd(30, b); else y = H - M - rnd(30, b);
+    if (inWater(x, y)) return [x, y];
+  }
+  return [W / 2, H / 2];
+}
+function edgeDist(x, y) { return Math.min(x - M, W - M - x, y - M, H - M - y); }
+function initCritters() {
+  crInit = true; shrimp = []; frog = null;
+  for (let i = 0; i < 4; i++) { const [x, y] = edgePoint(); shrimp.push({ x, y, a: rnd(0, TAU), v: 0, ph: rnd(0, TAU), pause: rnd(0, 3), flee: 0, sz: rnd(.9, 1.15), pts: Array.from({ length: 6 }, () => ({ x, y })) }); }
+  const [cx, cy] = edgePoint(); crab = { x: cx, y: cy, b: rnd(0, TAU), dir: Math.random() < .5 ? 1 : -1, v: 0, ph: 0, pause: rnd(1, 3), flee: 0 };
+}
+// shared wandering: keep to the pond edges, stay in the water, scatter from a sweeping hand
+function wander(c, dt, speed, turn) {
+  c.pause -= dt;
+  if (c.pause <= 0 && Math.random() < dt * .6) c.pause = rnd(1.2, 4);
+  const idle = c.pause > 0 && c.flee <= 0;
+  if (c.flee > 0) c.flee -= dt;
+  const tv = idle ? 0 : (c.flee > 0 ? 150 * Math.min(1, c.flee / .5) + speed : speed);
+  c.v += (tv - c.v) * Math.min(1, dt * 4);
+  if (!idle && c.flee <= 0) {
+    c.a += Math.sin(T * .7 + c.ph) * turn * dt;
+    if (edgeDist(c.x, c.y) > Math.min(W, H) * .22) { let cx = Math.max(M + 40, Math.min(W - M - 40, c.x)), cy = Math.max(M + 40, Math.min(H - M - 40, c.y)); const ex = Math.min(c.x - M, W - M - c.x) < Math.min(c.y - M, H - M - c.y) ? (c.x < W / 2 ? M + 40 : W - M - 40) : c.x, ey = ex === c.x ? (c.y < H / 2 ? M + 40 : H - M - 40) : c.y; let d = Math.atan2(ey - c.y, ex - c.x) - c.a; d = Math.atan2(Math.sin(d), Math.cos(d)); c.a += d * dt * .8; }
+  }
+}
+function stepMove(c, dx, dy) {
+  const nx = c.x + dx, ny = c.y + dy;
+  if (nx > M + 14 && nx < W - M - 14 && ny > M + 14 && ny < H - M - 14 && inWater(nx, ny)) { c.x = nx; c.y = ny; return true; }
+  return false;
+}
+function updateShrimp(s, dt) {
+  s.ph += dt * (2 + s.v * .12);
+  if (scary(s.x, s.y, 120) && s.flee <= 0) { s.flee = .6; s.a = Math.atan2(s.y - ptr.y, s.x - ptr.x); }
+  wander(s, dt, 9, 1.4);
+  if (!stepMove(s, Math.cos(s.a) * s.v * dt, Math.sin(s.a) * s.v * dt)) s.a += Math.PI * .6 + rnd(-.4, .4);
+  const p = s.pts; p[0].x = s.x; p[0].y = s.y; const L = 4.6 * s.sz, curl = s.flee > 0 ? 1.6 : .18;
+  for (let i = 1; i < p.length; i++) {
+    const ref = i === 1 ? s.a + Math.PI : Math.atan2(p[i - 1].y - p[i - 2].y, p[i - 1].x - p[i - 2].x);
+    const ang = ref + curl * (i / p.length) * Math.sin(s.ph * .4 + 1) * (s.flee > 0 ? 1 : .5) + (s.flee > 0 ? .3 * i : 0);
+    p[i].x += (p[i - 1].x + Math.cos(ang) * L - p[i].x) * Math.min(1, dt * 14); p[i].y += (p[i - 1].y + Math.sin(ang) * L - p[i].y) * Math.min(1, dt * 14);
+  }
+}
+function drawShrimp(s) {
+  const p = s.pts, n = p.length;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const body = (ox, oy, col, wscale) => {
+    for (let i = n - 1; i >= 0; i--) {
+      const t = i / (n - 1), w = (3.6 - 1.9 * t) * s.sz * wscale;
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(p[i].x + ox, p[i].y + oy, w, 0, TAU); ctx.fill();
+    }
+  };
+  body(2.5, 3.5, 'rgba(0,40,44,.22)', 1);
+  const hx = p[0].x, hy = p[0].y, ca = Math.cos(s.a), sa = Math.sin(s.a);
+  // legs
+  ctx.strokeStyle = 'rgba(214,170,150,.8)'; ctx.lineWidth = .9;
+  for (let i = 0; i < 4; i++) for (const sg of [-1, 1]) {
+    const q = p[i], sw = Math.sin(s.ph * 2 + i * 1.3) * 2 * (s.v > 3 ? 1 : .2);
+    ctx.beginPath(); ctx.moveTo(q.x, q.y); ctx.lineTo(q.x - sa * sg * (5.5 * s.sz) + ca * sw, q.y + ca * sg * (5.5 * s.sz) + sa * sw); ctx.stroke();
+  }
+  body(0, 0, 'rgba(236,196,172,.92)', 1);
+  body(0, 0, 'rgba(250,224,205,.5)', .45);
+  // tail fan
+  const e = p[n - 1], te = Math.atan2(e.y - p[n - 2].y, e.x - p[n - 2].x);
+  ctx.fillStyle = 'rgba(232,184,160,.9)';
+  for (const d of [-.5, 0, .5]) { ctx.beginPath(); ctx.ellipse(e.x + Math.cos(te + d) * 3, e.y + Math.sin(te + d) * 3, 3.2 * s.sz, 1.4 * s.sz, te + d, 0, TAU); ctx.fill(); }
+  // antennae + eyes
+  ctx.strokeStyle = 'rgba(224,180,160,.85)'; ctx.lineWidth = .8;
+  for (const sg of [-1, 1]) {
+    const w1 = Math.sin(T * 2 + s.ph + sg) * 3;
+    ctx.beginPath(); ctx.moveTo(hx + ca * 3, hy + sa * 3); ctx.quadraticCurveTo(hx + ca * 14 - sa * sg * (7 + w1), hy + sa * 14 + ca * sg * (7 + w1), hx + ca * 24 - sa * sg * (14 + w1), hy + sa * 24 + ca * sg * (14 + w1)); ctx.stroke();
+    ctx.fillStyle = '#2a1c18'; ctx.beginPath(); ctx.arc(hx + ca * 3.2 - sa * sg * 2, hy + sa * 3.2 + ca * sg * 2, 1, 0, TAU); ctx.fill();
+  }
+}
+function updateCrab(c, dt) {
+  c.ph += dt * (2 + c.v * .15);
+  if (scary(c.x, c.y, 130) && c.flee <= 0) { c.flee = .8; c.a = Math.atan2(c.y - ptr.y, c.x - ptr.x); c.b = c.a - c.dir * Math.PI / 2; }
+  if (c.a === undefined) c.a = c.b + c.dir * Math.PI / 2;
+  if (c.flee <= 0) { c.a = c.b + c.dir * Math.PI / 2; if (Math.random() < dt * .08) c.dir *= -1; c.b += Math.sin(T * .3) * .1 * dt; }
+  wander(Object.assign(c, { a: c.a }), dt, 12, 0);
+  if (!stepMove(c, Math.cos(c.a) * c.v * dt, Math.sin(c.a) * c.v * dt)) { c.dir *= -1; c.b += rnd(-.8, .8); c.pause = .4; }
+}
+function drawCrab(c) {
+  const sx = c.x, sy = c.y, f = c.b, cf = Math.cos(f), sf = Math.sin(f), s = 1;
+  const P = (fw, sd) => [sx + cf * fw - sf * sd, sy + sf * fw + cf * sd];
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  // shadow
+  ctx.fillStyle = 'rgba(0,40,44,.22)'; ctx.beginPath(); ctx.ellipse(sx + 3, sy + 4, 14, 10, f, 0, TAU); ctx.fill();
+  // legs (3 per side), walking
+  ctx.strokeStyle = '#a2604a'; ctx.lineWidth = 2.2;
+  for (const sg of [-1, 1]) for (let i = 0; i < 3; i++) {
+    const fw = 5 - i * 5, sw = Math.sin(c.ph * 2 + i * 1.9 + (sg > 0 ? 0 : Math.PI)) * 3 * (c.v > 2 ? 1 : .15);
+    const k = P(fw - 2 + sw, sg * 15), t = P(fw - 6 + sw, sg * 22);
+    const a0 = P(fw, sg * 8);
+    ctx.beginPath(); ctx.moveTo(a0[0], a0[1]); ctx.lineTo(k[0], k[1]); ctx.lineTo(t[0], t[1]); ctx.stroke();
+  }
+  // claws
+  for (const sg of [-1, 1]) {
+    const sw = Math.sin(c.ph * .8 + sg) * 1.5, el = P(10, sg * 12), tip = P(22 + sw, sg * 9);
+    ctx.strokeStyle = '#b36e54'; ctx.lineWidth = 3.4; ctx.beginPath(); ctx.moveTo(...P(7, sg * 8)); ctx.lineTo(el[0], el[1]); ctx.lineTo(tip[0], tip[1]); ctx.stroke();
+    ctx.fillStyle = '#c47c60'; const pc = P(26 + sw, sg * 8); ctx.beginPath(); ctx.ellipse(pc[0], pc[1], 7, 4.4, f + sg * .25, 0, TAU); ctx.fill();
+    ctx.strokeStyle = 'rgba(70,30,20,.5)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(pc[0], pc[1]); ctx.lineTo(...P(32 + sw, sg * 8)); ctx.stroke();
+  }
+  // carapace
+  const g = ctx.createRadialGradient(sx - sf * 2 + cf * 3, sy + cf * 2 + sf * 3, 1, sx, sy, 15);
+  g.addColorStop(0, '#d89472'); g.addColorStop(1, '#8e5240');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(sx, sy, 13, 16, f + Math.PI / 2, 0, TAU); ctx.fill();
+  ctx.strokeStyle = 'rgba(70,30,20,.4)'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.fillStyle = 'rgba(255,230,205,.22)'; ctx.beginPath(); ctx.ellipse(sx + cf * 2 - sf * 3, sy + sf * 2 + cf * 3, 6, 4, f + Math.PI / 2, 0, TAU); ctx.fill();
+  // eyes on stalks
+  for (const sg of [-1, 1]) { const e = P(11, sg * 4.5); ctx.fillStyle = '#2a1812'; ctx.beginPath(); ctx.arc(e[0], e[1], 1.9, 0, TAU); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.beginPath(); ctx.arc(e[0] - .5, e[1] - .6, .6, 0, TAU); ctx.fill(); }
+}
+function drawCritters(dt) {
+  if (!crInit) initCritters();
+  for (const s of shrimp) { updateShrimp(s, dt); drawShrimp(s); }
+  updateCrab(crab, dt); drawCrab(crab);
+}
+// frog: sits on a lily pad, hops into the water when the hand sweeps close, climbs back later
+function padPos(p) { return [p.x + (p.ox || 0), p.y + (p.oy || 0)]; }
+function pickFrogPad() {
+  const c = pads.filter(p => !p.flower && p.r > 26).sort((a, b) => b.r - a.r)[0] || pads.slice().sort((a, b) => b.r - a.r)[0];
+  return c || null;
+}
+function jumpTo(f, x, y, dur) { f.sx = f.x; f.sy = f.y; f.tx = x; f.ty = y; f.jt = 0; f.jd = dur; f.state = f.state === 'swim' ? 'return' : 'jump'; f.fa = Math.atan2(y - f.y, x - f.x); }
+function drawFrog(dt) {
+  if (!pads.length) return;
+  if (!frog || !pads.includes(frog.pad)) { const p = pickFrogPad(); if (!p) return; const [px, py] = padPos(p); frog = { pad: p, state: 'sit', x: px, y: py, fa: rnd(-1, 1), ta: 0, blink: rnd(2, 5), bl: 0, t: 0, away: 0, off: rnd(0, TAU) }; }
+  const f = frog, p = f.pad, [px, py] = padPos(p), sz = Math.max(11, Math.min(20, p.r * .38));
+  f.t += dt;
+  if (f.state === 'sit') {
+    const ox = Math.cos(f.off) * p.r * .22, oy = Math.sin(f.off) * p.r * .22; f.x = px + ox; f.y = py + oy;
+    if (Math.random() < dt * .25) f.ta = f.fa + rnd(-.9, .9);
+    f.fa += (f.ta - f.fa) * Math.min(1, dt * 2);
+    f.blink -= dt; if (f.blink <= 0) { f.bl = .16; f.blink = rnd(2.5, 6); }
+    if (scary(f.x, f.y, 150) || p.drag) {
+      let best = null; const base = p.drag ? rnd(0, TAU) : Math.atan2(f.y - ptr.y, f.x - ptr.x);
+      for (let k = 0; k < 9 && !best; k++) { const a = base + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * .5, tx = f.x + Math.cos(a) * (p.r + 70), ty = f.y + Math.sin(a) * (p.r + 70); if (inWater(tx, ty) && tx > M + 20 && tx < W - M - 20 && ty > M + 20 && ty < H - M - 20 && !pads.some(q => q !== p && Math.hypot(tx - q.x, ty - q.y) < q.r * .9)) best = [tx, ty]; }
+      if (best) jumpTo(f, best[0], best[1], .5);
+    }
+  }
+  if (f.state === 'jump' || f.state === 'return') {
+    f.jt += dt; const k = Math.min(1, f.jt / f.jd);
+    if (f.state === 'return') { f.tx = px; f.ty = py; }
+    f.x = f.sx + (f.tx - f.sx) * k; f.y = f.sy + (f.ty - f.sy) * k;
+    if (k >= 1) {
+      if (f.state === 'jump') { splash(f.x, f.y, .55); f.state = 'swim'; f.away = rnd(7, 11); f.rip = 1; }
+      else { ripple(px, py, p.r * 1.1, .4); f.state = 'sit'; f.off = rnd(0, TAU); }
+    }
+  }
+  if (f.state === 'swim') {
+    f.away -= dt; f.rip -= dt; if (f.rip <= 0) { f.rip = rnd(1.3, 2.2); ripple(f.x + rnd(-8, 8), f.y + rnd(-8, 8), 22, .3); }
+    if (f.away <= 0) { const [qx, qy] = padPos(p); f.sx = f.x; f.sy = f.y; f.tx = qx; f.ty = qy; f.jt = 0; f.jd = .6; f.state = 'return'; f.fa = Math.atan2(qy - f.y, qx - f.x); splash(f.x, f.y, .35); }
+    return;
+  }
+  // draw
+  const air = f.state === 'sit' ? 0 : Math.sin(Math.min(1, f.jt / f.jd) * Math.PI), sc = 1 + .45 * air, a = f.fa, ca = Math.cos(a), sa = Math.sin(a);
+  const X = f.x, Y = f.y, P = (fw, sd) => [X + ca * fw * sz - sa * sd * sz, Y + sa * fw * sz + ca * sd * sz];
+  ctx.save(); ctx.translate(X, Y); ctx.scale(sc, sc); ctx.translate(-X, -Y);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.fillStyle = `rgba(0,35,30,${.28 - .1 * air})`; ctx.beginPath(); ctx.ellipse(X + 3 + air * 10, Y + 4 + air * 12, sz * .8, sz * .95, a + Math.PI / 2, 0, TAU); ctx.fill();
+  // hind legs (folded Z) and front legs
+  ctx.strokeStyle = '#5f9040'; ctx.lineWidth = sz * .3;
+  const stretch = air * .8;
+  for (const sg of [-1, 1]) {
+    const h0 = P(-.5, sg * .55), h1 = P(-.4 - stretch * 1.4, sg * (1.25 - stretch * .6)), h2 = P(.1 - stretch * 2, sg * (.85 - stretch * .5));
+    ctx.beginPath(); ctx.moveTo(...h0); ctx.lineTo(...h1); ctx.lineTo(...h2); ctx.stroke();
+    ctx.fillStyle = '#6a9c47'; ctx.beginPath(); ctx.ellipse(h2[0], h2[1], sz * .3, sz * .17, a + sg * .5, 0, TAU); ctx.fill();
+    const f0 = P(.55, sg * .4), f1 = P(.8, sg * .8);
+    ctx.lineWidth = sz * .22; ctx.beginPath(); ctx.moveTo(...f0); ctx.lineTo(...f1); ctx.stroke(); ctx.lineWidth = sz * .3;
+  }
+  // body
+  const bg = ctx.createRadialGradient(X - sa * 2 + ca * 3, Y + sa * 3, 1, X, Y, sz * 1.1); bg.addColorStop(0, '#9cc766'); bg.addColorStop(1, '#4f8035');
+  ctx.fillStyle = bg; ctx.beginPath(); ctx.ellipse(X, Y, sz * .72 * (1 + .03 * Math.sin(T * 3)), sz * 1.0, a + Math.PI / 2, 0, TAU); ctx.fill();
+  ctx.strokeStyle = 'rgba(30,60,20,.45)'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.fillStyle = 'rgba(52,86,34,.55)';
+  for (const [fw, sd, r] of [[-.2, .3, .17], [-.5, -.25, .2], [.1, -.35, .14], [-.55, .35, .13]]) { const q = P(fw, sd); ctx.beginPath(); ctx.arc(q[0], q[1], sz * r, 0, TAU); ctx.fill(); }
+  ctx.strokeStyle = 'rgba(190,226,130,.7)'; ctx.lineWidth = sz * .1; ctx.beginPath(); ctx.moveTo(...P(.7, 0)); ctx.lineTo(...P(-.85, 0)); ctx.stroke();
+  // head and eyes
+  const hd = P(.78, 0); ctx.fillStyle = '#86b655'; ctx.beginPath(); ctx.ellipse(hd[0], hd[1], sz * .52, sz * .62, a + Math.PI / 2, 0, TAU); ctx.fill();
+  for (const sg of [-1, 1]) {
+    const e = P(.82, sg * .42); ctx.fillStyle = '#7aa84b'; ctx.beginPath(); ctx.arc(e[0], e[1], sz * .24, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#f0e6a8'; ctx.beginPath(); ctx.arc(e[0], e[1], sz * .17, 0, TAU); ctx.fill();
+    if (f.bl > 0) { ctx.fillStyle = '#6a9c47'; ctx.beginPath(); ctx.arc(e[0], e[1], sz * .19, 0, TAU); ctx.fill(); } else { ctx.fillStyle = '#1c1a10'; ctx.beginPath(); ctx.arc(e[0] + ca * 1, e[1] + sa * 1, sz * .08, 0, TAU); ctx.fill(); }
+  }
+  if (f.bl > 0) f.bl -= dt;
+  ctx.restore();
 }
 
 function resize() {
@@ -710,7 +908,7 @@ function loop(now) {
     flowAt(m.x, m.y, T); m.x = (m.x + (m.vx + FL.x * .7) * dt + W) % W; m.y = (m.y + (m.vy + FL.y * .7) * dt + H) % H;
     ctx.fillStyle = `rgba(230,250,240,${m.a})`; ctx.beginPath(); ctx.arc(m.x, m.y, m.r, 0, TAU); ctx.fill();
   }
-  drawFlow(dt); refractRipples();
+  drawFlow(dt); refractRipples(); drawCritters(dt);
   jumpT -= dt;
   if (jumpT <= 0) {
     const c = fishes.filter(f => !f.jump && f.x > 90 && f.x < W - 90 && f.y > 90 && f.y < H - 90);
@@ -778,6 +976,7 @@ function loop(now) {
     }
   }
   for (const p of pads) drawPad(p, T, dt);
+  drawFrog(dt);
   drawLeaves(dt);
   drawSplash(dt);
   drawInflow(dt);
@@ -874,7 +1073,7 @@ C.addEventListener('pointerdown', e => {
   if (!inWater(x, y)) return;
   const n = Math.random() < .5 ? 1 : 2;
   for (let i = 0; i < n && food.length < 6; i++) food.push({ x: x + rnd(-10, 10), y: y + rnd(-10, 10), life: rnd(18, 24), ph: rnd(0, TAU) });
-  ripple(x, y, 30, .45);
+  nibble(x, y, 5, .7);
   hint.style.opacity = '0';
 });
 
