@@ -55,7 +55,7 @@
 <div class="bar">
   <button id="bDive"><span class="ic">🤿</span><span class="lb">Dive in</span></button>
   <button id="bFish"><span class="ic">🐟</span><span class="lb">My fish</span></button>
-  <button id="bNight"><span class="ic">🌙</span><span class="lb">Night</span></button>
+  <button id="bNight"><span class="ic">🕒</span><span class="lb">Auto</span></button>
   <button id="bRain"><span class="ic">🌧️</span><span class="lb">Rain</span></button>
   <button id="bSound"><span class="ic">🔈</span><span class="lb">Sound</span></button>
 </div>
@@ -100,7 +100,9 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem('kolam:' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem('kolam:' + k, JSON.stringify(v)); } catch (e) {} }
 };
-const settings = Object.assign({ night: false, rain: false, sound: true }, store.get('settings', {}));
+const settings = Object.assign({ tod: 'auto', rain: false, sound: true }, store.get('settings', {}));
+if (settings.night) settings.tod = 'night'; delete settings.night; // older saves
+if (!['auto', 'morning', 'day', 'evening', 'night'].includes(settings.tod)) settings.tod = 'auto';
 
 // ---------- koi varieties ----------
 const KINDS = {
@@ -460,8 +462,25 @@ function drawSplash(dt) {
 // ---------- pond life: shrimp, crab on the floor, a frog on a lily pad ----------
 const rainDrops = [], rainSplat = [];
 let rainI = 0; // rain intensity 0..1, eases in and out over ~7 s
-let nightI = settings.night ? 1 : 0; // 0 day .. 1 night, eases over ~3 s
-function stepNight(dt) { const tg = settings.night ? 1 : 0, d = tg - nightI; nightI += Math.sign(d) * Math.min(Math.abs(d), dt / 3.2); }
+// time of day: night amount, warm (golden / sunset) amount, morning mist amount; each eases toward its target
+const TOD = { night: [1, 0, 0], morning: [0, .55, 1], day: [0, 0, 0], evening: [.3, 1, 0] };
+const TOD_KEYS = [[0, 'night'], [4.8, 'night'], [6.3, 'morning'], [9.5, 'morning'], [11, 'day'], [15, 'day'], [16.8, 'evening'], [18.2, 'evening'], [19.3, 'night'], [24, 'night']];
+function todTarget() {
+  if (settings.tod !== 'auto') return TOD[settings.tod];
+  const d = new Date(), h = d.getHours() + d.getMinutes() / 60;
+  for (let i = 1; i < TOD_KEYS.length; i++) if (h <= TOD_KEYS[i][0]) {
+    const [h0, a] = TOD_KEYS[i - 1], [h1, b] = TOD_KEYS[i], f = (h - h0) / (h1 - h0), A = TOD[a], B = TOD[b];
+    return [A[0] + (B[0] - A[0]) * f, A[1] + (B[1] - A[1]) * f, A[2] + (B[2] - A[2]) * f];
+  }
+  return TOD.night;
+}
+let nightI = 0, warmI = 0, mistI = 0;
+{ const t0 = todTarget(); nightI = t0[0]; warmI = t0[1]; mistI = t0[2]; }
+function stepNight(dt) {
+  const tg = todTarget(), st = Math.min(1, dt / 3.2);
+  const mv = (v, g) => { const d = g - v; return v + Math.sign(d) * Math.min(Math.abs(d), st); };
+  nightI = mv(nightI, tg[0]); warmI = mv(warmI, tg[1]); mistI = mv(mistI, tg[2]);
+}
 function stepRain(dt) { const tg = settings.rain ? 1 : 0; rainI += Math.sign(tg - rainI) * Math.min(Math.abs(tg - rainI), dt / 7); }
 let shrimp = [], crab = null, crab2 = null, frog = null, crInit = false, skipDraw = false;
 const scary = (x, y, R) => !dragPad && T - ptr.t < .3 && ptr.sp > 50 && Math.hypot(x - ptr.x, y - ptr.y) < R;
@@ -1097,6 +1116,21 @@ function loop(now) {
     }
     ctx.restore();
   }
+  if (warmI > .004) { // golden morning light / orange sunset
+    ctx.fillStyle = `rgba(255,140,60,${.27 * warmI * (1 - mistI * .45)})`; ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'lighter';
+    const sg = ctx.createRadialGradient(W * .12, H * .16, 0, W * .12, H * .16, Math.max(W, H) * .7);
+    sg.addColorStop(0, `rgba(255,180,100,${.3 * warmI})`); sg.addColorStop(1, 'rgba(255,170,90,0)'); ctx.fillStyle = sg; ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  if (mistI > .004) { // thin morning mist drifting over the water
+    ctx.fillStyle = `rgba(228,242,242,${.12 * mistI})`; ctx.fillRect(0, 0, W, H);
+    for (let i = 0; i < 4; i++) {
+      const mx = ((T * (5 + i * 2) + i * W * .3) % (W * 1.6)) - W * .3, my = H * (.2 + i * .22) + Math.sin(T * .15 + i) * 30, r = Math.max(W, H) * (.28 + i * .04);
+      const mgd = ctx.createRadialGradient(mx, my, 0, mx, my, r); mgd.addColorStop(0, `rgba(235,246,246,${.2 * mistI})`); mgd.addColorStop(1, 'rgba(235,246,246,0)');
+      ctx.fillStyle = mgd; ctx.fillRect(mx - r, my - r, r * 2, r * 2);
+    }
+  }
   if (nightI > .004) {
     const ni = nightI;
     ctx.fillStyle = `rgba(6,12,42,${.52 * ni})`; ctx.fillRect(0, 0, W, H);
@@ -1253,12 +1287,14 @@ C.addEventListener('pointerdown', e => {
 // ---------- UI ----------
 const $ = id => document.getElementById(id);
 function syncBar() {
-  $('bNight').classList.toggle('on', settings.night); $('bRain').classList.toggle('on', settings.rain);
+  { const TL = { auto: ['🕒', 'Auto'], morning: ['🌅', 'Morning'], day: ['☀️', 'Day'], evening: ['🌇', 'Evening'], night: ['🌙', 'Night'] }[settings.tod];
+    $('bNight').querySelector('.ic').textContent = TL[0]; $('bNight').querySelector('.lb').textContent = TL[1]; $('bNight').classList.toggle('on', settings.tod !== 'auto'); }
+  $('bRain').classList.toggle('on', settings.rain);
   $('bSound').classList.toggle('on', settings.sound); $('bSound').querySelector('.ic').textContent = settings.sound ? '🔈' : '🔇';
   store.set('settings', settings);
   updateAmbient();
 }
-$('bNight').onclick = () => { settings.night = !settings.night; syncBar(); };
+$('bNight').onclick = () => { const o = ['auto', 'morning', 'day', 'evening', 'night']; settings.tod = o[(o.indexOf(settings.tod) + 1) % o.length]; syncBar(); };
 $('bRain').onclick = () => { settings.rain = !settings.rain; syncBar(); };
 $('bSound').onclick = () => { settings.sound = !settings.sound; syncBar(); if (settings.sound) plop(); };
 
@@ -1335,7 +1371,7 @@ function initDive() {
   scene.background = U.uFog.value; scene.fog = new T3.FogExp2(0x1d6a6e, .075);
   const hemi = new T3.HemisphereLight(0xc8fff4, 0x5a5a3a, .95); scene.add(hemi);
   const sun = new T3.DirectionalLight(0xfff2d2, .85); sun.position.set(3, 10, 2); scene.add(sun);
-  const COL = { fogDay: new T3.Color('#1d6a6e'), fogNight: new T3.Color('#071a2c'), fogRain: new T3.Color('#1a5559'), sunDay: new T3.Color('#fff2d2'), sunNight: new T3.Color('#9fb6ff') };
+  const COL = { fogWarm: new T3.Color('#2f6b58'), sunWarm: new T3.Color('#ffb070'), fogDay: new T3.Color('#1d6a6e'), fogNight: new T3.Color('#071a2c'), fogRain: new T3.Color('#1a5559'), sunDay: new T3.Color('#fff2d2'), sunNight: new T3.Color('#9fb6ff') };
 
   // sandy floor with moving caustics
   const fg = new T3.PlaneGeometry(70, 70, 110, 110); fg.rotateX(-Math.PI / 2);
@@ -1751,14 +1787,14 @@ function initDive() {
         f.hl.forEach((pv, i) => { pv.rotation.y = Math.sin(t * 5 + i * Math.PI) * .6; }); } }
   }
 
-  D = { scene, koi: [], food: [], makeKoi, buildPads, t: 0, jumpT: rnd(6, 10), last: 0, nk: settings.night ? 1 : 0, rk: rainI, curious: new T3.Vector3(), amb: null, saveAcc: 0,
+  D = { scene, koi: [], food: [], makeKoi, buildPads, t: 0, jumpT: rnd(6, 10), last: 0, nk: nightI, wk: warmI, rk: rainI, curious: new T3.Vector3(), amb: null, saveAcc: 0,
     frame(dt) {
       const t = (D.t += dt); U.uT.value = t;
-      D.nk = nightI; D.rk = rainI;
-      U.uFog.value.copy(COL.fogDay).lerp(COL.fogRain, D.rk * .6).lerp(COL.fogNight, D.nk); scene.fog.color.copy(U.uFog.value);
+      D.nk = nightI; D.wk = warmI; D.rk = rainI;
+      U.uFog.value.copy(COL.fogDay).lerp(COL.fogRain, D.rk * .6).lerp(COL.fogWarm, D.wk * .55 * (1 - D.nk)).lerp(COL.fogNight, D.nk); scene.fog.color.copy(U.uFog.value);
       U.uLight.value = (1 - .68 * D.nk) * (1 - .2 * D.rk); U.uRain.value = D.rk;
       U.uDen.value = scene.fog.density = .075 + .012 * D.nk + .008 * D.rk;
-      hemi.intensity = .95 - .6 * D.nk; sun.intensity = .85 - .5 * D.nk; sun.color.copy(COL.sunDay).lerp(COL.sunNight, D.nk);
+      hemi.intensity = .95 - .6 * D.nk; sun.intensity = .85 - .5 * D.nk; sun.color.copy(COL.sunDay).lerp(COL.sunWarm, D.wk * (1 - D.nk)).lerp(COL.sunNight, D.nk);
       if (!down) { cam.yaw += cam.vy; cam.pitch = clamp(cam.pitch + cam.vp, -1.1, 1.1); cam.vy *= .92; cam.vp *= .92; }
       camera.position.set(Math.sin(t * .045) * 1.6, -.5 + Math.sin(t * .13) * .25, 5.2 + Math.cos(t * .045) * 1.2);
       const cp = Math.cos(cam.pitch), dir = new T3.Vector3(Math.sin(cam.yaw) * cp, Math.sin(cam.pitch), -Math.cos(cam.yaw) * cp);
@@ -1908,7 +1944,34 @@ function cricketTick() {
     }
   }
 }
-setInterval(cricketTick, 300);
+let skyS = null; // morning birds and a soft evening breeze
+function skyTick() {
+  if (!actx || !settings.sound || !soundUnlocked) return;
+  const t0 = actx.currentTime, dv = diving ? .5 : 1, bl = mistI * (1 - nightI) * dv, wl = warmI * (1 - mistI) * (1 - nightI) * dv;
+  if (!skyS) {
+    const bg = actx.createGain(); bg.gain.value = 0; bg.connect(actx.destination);
+    const len = actx.sampleRate * 2, nb = actx.createBuffer(1, len, actx.sampleRate), d = nb.getChannelData(0); let p = 0;
+    for (let i = 0; i < len; i++) { p = p * .96 + (Math.random() * 2 - 1) * .04; d[i] = p * 6; }
+    const ns = actx.createBufferSource(); ns.buffer = nb; ns.loop = true;
+    const bp = actx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 420; bp.Q.value = .5;
+    const wg = actx.createGain(); wg.gain.value = 0; ns.connect(bp); bp.connect(wg); wg.connect(actx.destination); ns.start();
+    skyS = { bg, wg, next: [t0 + .5, t0 + 2.2], f: [3100, 3900] };
+  }
+  skyS.bg.gain.setTargetAtTime(bl * .06, t0, .6);
+  skyS.wg.gain.setTargetAtTime(wl * .05 * (.55 + .45 * Math.sin(t0 * .35) * Math.sin(t0 * .13 + 1)), t0, .8);
+  if (bl < .03) { skyS.next = skyS.next.map(n => Math.max(n, t0 + .3)); return; }
+  for (let b = 0; b < 2; b++) while (skyS.next[b] < t0 + .6) {
+    const n = 2 + (Math.random() * 3 | 0); let t = skyS.next[b];
+    for (let i = 0; i < n; i++) {
+      const o = actx.createOscillator(), e = actx.createGain(), f0 = skyS.f[b] * rnd(.85, 1.2), dur = rnd(.07, .14);
+      o.type = 'sine'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * rnd(1.15, 1.5), t + dur);
+      e.gain.setValueAtTime(.0001, t); e.gain.linearRampToValueAtTime(rnd(.5, 1), t + .015); e.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      o.connect(e); e.connect(skyS.bg); o.start(t); o.stop(t + dur + .02); t += dur + rnd(.04, .1);
+    }
+    skyS.next[b] = t + (Math.random() < .4 ? rnd(2.5, 6) : rnd(.8, 2));
+  }
+}
+setInterval(cricketTick, 300); setInterval(skyTick, 300);
 function updateAmbient() {
   const want = settings.sound && soundUnlocked;
   try {
