@@ -1131,16 +1131,16 @@ function loop(now) {
       const cl = .78 + .22 * Math.sin(T * .08) * Math.sin(T * .031 + .7); // thin cloud passing the sun
       ctx.globalCompositeOperation = 'lighter';
       const R = Math.max(W, H) * (.55 + .2 * (1 - e)), gg = ctx.createRadialGradient(sx, sy, 0, sx, sy, R);
-      gg.addColorStop(0, `rgba(${col},${(.12 + .2 * (1 - e)) * dayA * cl})`); gg.addColorStop(1, `rgba(${col},0)`); ctx.fillStyle = gg; ctx.fillRect(0, 0, W, H);
+      gg.addColorStop(0, `rgba(${col},${(.07 + .09 * (1 - e)) * dayA * cl})`); gg.addColorStop(1, `rgba(${col},0)`); ctx.fillStyle = gg; ctx.fillRect(0, 0, W, H);
       // long light shafts, strongest when the sun is low
       const ang0 = Math.atan2(H * .55 - sy, W * .5 - sx), len = Math.max(W, H) * 1.2, shaft = (1 - e * .75) * dayA * cl;
       for (let i = 0; i < 5; i++) {
         const a = ang0 + (i - 2) * .17 + Math.sin(T * .12 + i * 1.9) * .03, ex = sx + Math.cos(a) * len, ey = sy + Math.sin(a) * len, lg = ctx.createLinearGradient(sx, sy, ex, ey);
-        lg.addColorStop(0, `rgba(${col},${.07 * shaft})`); lg.addColorStop(1, `rgba(${col},0)`);
+        lg.addColorStop(0, `rgba(${col},${.04 * shaft})`); lg.addColorStop(1, `rgba(${col},0)`);
         ctx.strokeStyle = lg; ctx.lineWidth = 50 + i % 3 * 30; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
       }
       // glitter between the sun and the middle of the pond
-      const gx = W * .5 + (sx - W * .5) * .5, gy = H * .55 + (sy - H * .55) * .5, gR = Math.min(W, H) * .4, ga = (.35 + .65 * e) * dayA * cl;
+      const gx = W * .5 + (sx - W * .5) * .5, gy = H * .55 + (sy - H * .55) * .5, gR = Math.min(W, H) * .4, ga = (.3 + .6 * e) * dayA * cl * (1 - mistI * .5);
       for (let i = 0; i < 34; i++) {
         const ph = i * 2.399, a2 = Math.max(0, Math.sin(T * (1.3 + (i % 5) * .4) + ph)) ** 3 * ga;
         if (a2 < .03) continue; ctx.fillStyle = `rgba(255,${240 - Math.round(60 * (1 - e))},${210 - Math.round(80 * (1 - e))},${a2 * .8})`;
@@ -1157,10 +1157,10 @@ function loop(now) {
     }
   }
   if (mistI > .004) { // thin morning mist drifting over the water
-    ctx.fillStyle = `rgba(228,242,242,${.12 * mistI})`; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = `rgba(228,242,242,${.05 * mistI})`; ctx.fillRect(0, 0, W, H);
     for (let i = 0; i < 4; i++) {
       const mx = ((T * (5 + i * 2) + i * W * .3) % (W * 1.6)) - W * .3, my = H * (.2 + i * .22) + Math.sin(T * .15 + i) * 30, r = Math.max(W, H) * (.28 + i * .04);
-      const mgd = ctx.createRadialGradient(mx, my, 0, mx, my, r); mgd.addColorStop(0, `rgba(235,246,246,${.2 * mistI})`); mgd.addColorStop(1, 'rgba(235,246,246,0)');
+      const mgd = ctx.createRadialGradient(mx, my, 0, mx, my, r); mgd.addColorStop(0, `rgba(235,246,246,${.1 * mistI})`); mgd.addColorStop(1, 'rgba(235,246,246,0)');
       ctx.fillStyle = mgd; ctx.fillRect(mx - r, my - r, r * 2, r * 2);
     }
   }
