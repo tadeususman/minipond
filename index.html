@@ -82,7 +82,8 @@ let W = 0, H = 0, DPR = 1, bg = null;
 // ---------- adaptive quality: 2 = full, 1 = lighter, 0 = lightest; drops automatically when frames run slow ----------
 let Q = (navigator.maxTouchPoints > 0 && innerWidth * innerHeight * Math.pow(Math.min(2, window.devicePixelRatio || 1), 2) > 4.2e6) ? 1 : 2;
 let qFrames = 0, qAcc = 0, qGrace = 2500, qHook = null;
-const qDpr = () => Math.min(Q >= 2 ? 2 : Q === 1 ? 1.4 : 1, window.devicePixelRatio || 1);
+// resolution scale: capped by a pixel budget so very wide / high-res screens stay smooth
+const qDpr = () => Math.max(.75, Math.min(Q >= 2 ? 2 : Q === 1 ? 1.4 : 1, window.devicePixelRatio || 1, Math.sqrt((Q >= 2 ? 3.2e6 : Q === 1 ? 1.8e6 : 1e6) / Math.max(1, innerWidth * innerHeight))));
 window.__q = () => Q;
 function qMon(raw) {
   if (raw > 1500 || Q <= 0) return;
