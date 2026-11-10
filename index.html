@@ -435,12 +435,13 @@ let splashes = [], drops2 = [], jumpT = rnd(6, 10);
 function splash(x, y, k = 1) {
   ripple(x, y, 46 * k, .7); ripple(x, y, 78 * k, .55); ripple(x, y, 112 * k, .4);
   splashes.push({ x, y, t: 0, k });
-  for (let i = 0; i < 16; i++) { const a = rnd(0, TAU), sp = rnd(30, 110) * k; drops2.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, z: rnd(2, 8), vz: rnd(70, 150) }); }
+  for (let i = 0; i < 8; i++) { const a = rnd(0, TAU), sp = rnd(20, 75) * k; drops2.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, z: rnd(2, 8), vz: rnd(70, 150) }); }
   splashSound(false, k);
 }
 // a small flick of water: droplets thrown up and out, with only a faint ring where they land
 function nibble(x, y, n = 11, k = 1) {
-  for (let i = 0; i < n; i++) { const a = rnd(0, TAU), sp = rnd(18, 72) * k; drops2.push({ x: x + Math.cos(a) * 2, y: y + Math.sin(a) * 2, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, z: rnd(1, 4), vz: rnd(55, 120) * k }); }
+  n = Math.max(2, Math.round(n * .4)); // a few drops only, thrown close to the mouth
+  for (let i = 0; i < n; i++) { const a = rnd(0, TAU), sp = rnd(8, 30) * k; drops2.push({ x: x + Math.cos(a) * 2, y: y + Math.sin(a) * 2, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, z: rnd(1, 3), vz: rnd(40, 85) * k }); }
   ripple(x, y, 18 * k, .3); nibbleSound(n > 8);
 }
 function drawSplash(dt) {
@@ -454,9 +455,9 @@ function drawSplash(dt) {
   for (let i = drops2.length - 1; i >= 0; i--) {
     const d = drops2[i]; d.vz -= 320 * dt; d.z += d.vz * dt; d.x += d.vx * dt; d.y += d.vy * dt; d.vx *= .98; d.vy *= .98;
     if (d.z <= 0) { if (Math.random() < .5) ripple(d.x, d.y, 12, .4); drops2.splice(i, 1); continue; }
-    const r = 1.2 + d.z * .03;
+    const r = .8 + d.z * .022;
     ctx.fillStyle = 'rgba(0,25,30,.18)'; ctx.beginPath(); ctx.arc(d.x + d.z * .3, d.y + d.z * .45, r, 0, TAU); ctx.fill();
-    ctx.fillStyle = 'rgba(245,255,252,.9)'; ctx.beginPath(); ctx.arc(d.x, d.y - d.z * .15, r, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'rgba(245,255,252,.62)'; ctx.beginPath(); ctx.arc(d.x, d.y - d.z * .15, r, 0, TAU); ctx.fill();
   }
 }
 
