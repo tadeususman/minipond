@@ -1124,7 +1124,7 @@ function loop(now) {
   }
   { // the sun: its glow, light shafts, drifting cloud shadows and glitter on the ripples
     const dayA = 1 - nightI;
-    if (warmI > .004) { ctx.fillStyle = `rgba(255,140,60,${.27 * warmI * (1 - mistI * .45)})`; ctx.fillRect(0, 0, W, H); }
+    if (warmI > .004) { ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = `rgba(255,185,125,${.5 * warmI * (1 - mistI * .5)})`; ctx.fillRect(0, 0, W, H); ctx.globalCompositeOperation = 'source-over'; } // multiply tints without washing out contrast
     if (dayA > .02) {
       const sp = sunProg(), e = Math.sin(Math.PI * sp), sx = W * (.08 + .84 * sp), sy = H * (.5 - .36 * e);
       const cr = Math.round(255), cg = Math.round(170 + 76 * Math.pow(e, .6)), cb = Math.round(90 + 130 * Math.pow(e, .6)), col = `${cr},${cg},${cb}`;
