@@ -1650,7 +1650,7 @@ function initDive() {
     }
     // gill cover, pectoral shadow and a soft sheen along the back
     c.strokeStyle = 'rgba(0,0,0,.16)'; c.lineWidth = 3; c.beginPath(); c.moveTo(TW * .165, TH * .3); c.quadraticCurveTo(TW * .185, TH * .5, TW * .165, TH * .7); c.stroke();
-    const sh = c.createLinearGradient(0, TH * .36, 0, TH * .6); sh.addColorStop(0, 'rgba(255,255,255,0)'); sh.addColorStop(.5, `rgba(255,255,255,${K.gloss ? .3 : .12})`); sh.addColorStop(1, 'rgba(255,255,255,0)');
+    const sh = c.createLinearGradient(0, TH * .36, 0, TH * .6); sh.addColorStop(0, 'rgba(255,255,255,0)'); sh.addColorStop(.5, `rgba(255,255,255,${K.gloss ? .1 : .04})`); sh.addColorStop(1, 'rgba(255,255,255,0)');
     c.fillStyle = sh; c.fillRect(0, TH * .36, TW, TH * .24);
     const t = new T3.CanvasTexture(cv); t.flipY = false; t.anisotropy = 4; t.wrapS = T3.ClampToEdgeWrapping; bodyTexCache.set(key, t); return t;
   }
@@ -1695,7 +1695,7 @@ function initDive() {
     }
     for (let i = 0; i < SEG; i++) for (let j = 0; j < RAD; j++) { const a = i * W1 + j, b = a + 1; idx.push(a, a + W1, b, b, a + W1, b + W1); }
     const bodyG = geo(pos, idx, uv); bodyG.computeBoundingSphere(); bodyG.boundingSphere.radius *= 1.4;
-    const body = new T3.Mesh(bodyG, new T3.MeshStandardMaterial({ map: tex, color: '#d9d9d9', roughness: K.gloss ? .28 : .45, metalness: K.gloss ? .3 : .04, side: T3.DoubleSide }));
+    const body = new T3.Mesh(bodyG, new T3.MeshStandardMaterial({ map: tex, color: '#d9d9d9', roughness: K.gloss ? .55 : .75, metalness: K.gloss ? .1 : 0, side: T3.DoubleSide }));
     const finMat = new T3.MeshStandardMaterial({ map: finTex(K), transparent: true, opacity: .92, side: T3.DoubleSide, depthWrite: false, roughness: .6 });
     const x0 = -KL * .5, ft = KL * .46, fh = KL * .3;
     const tail = fanFin(finMat, 4, -.95, .95, ft, .42, true, fh / ft * 1.05); 
