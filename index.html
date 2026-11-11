@@ -2079,7 +2079,7 @@ function updateRainSound() {
 let cricket = null;
 function cricketTick() {
   if (!actx || !settings.sound || !soundUnlocked) return;
-  const t0 = actx.currentTime, lvl = nightI * (diving ? .55 : 1);
+  const t0 = actx.currentTime, lvl = Math.max(0, (nightI - .55) / .45) * (diving ? .55 : 1); // only once it is properly dark
   if (!cricket) { const g = actx.createGain(); g.gain.value = 0; g.connect(actx.destination); cricket = { g, v: [0, 1.1, 2.3].map((o, i) => ({ next: t0 + o, f: 4300 + i * 330 + rnd(-60, 60) })) }; }
   cricket.g.gain.setTargetAtTime(lvl * .05, t0, .5);
   if (lvl < .03) { for (const v of cricket.v) v.next = Math.max(v.next, t0 + .2); return; }
