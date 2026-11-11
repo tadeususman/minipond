@@ -1401,7 +1401,7 @@ let diving = false, D = null, diveBusy = false, amb = null, soundUnlocked = fals
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const fade = $('fade');
 const HINT_TOP = 'Tap to feed · sweep the water to scatter the koi · drag a lily to move it';
-const HINT_DIVE = 'Drag to look around · tap a fish to see its name';
+const HINT_DIVE = 'Drag to look around · tap the water to feed · tap a fish to see its name';
 function showHint(t) { hint.textContent = t; hint.style.opacity = '1'; }
 function loadThree() {
   return new Promise((res, rej) => {
@@ -1607,64 +1607,122 @@ function initDive() {
   }
 
   // koi
-  const pelletGeo = new T3.SphereGeometry(.04, 8, 6), pelletMat = new T3.MeshStandardMaterial({ color: '#a8692e', roughness: .7 });
-  const eyeGeo = new T3.SphereGeometry(1, 10, 8), eyeMat = new T3.MeshStandardMaterial({ color: '#0c0c0e', roughness: .2 });
+  const pelletGeo = new T3.SphereGeometry(.055, 10, 8), pelletMat = new T3.MeshStandardMaterial({ color: '#c98a45', roughness: .6, emissive: '#5a3410', emissiveIntensity: .5 });
+  const eyeGeo = new T3.SphereGeometry(1, 14, 10), eyeMat = new T3.MeshStandardMaterial({ color: '#0c0c0e', roughness: .15 }), eyeHl = new T3.MeshBasicMaterial({ color: '#ffffff' });
+  const barbelGeo = new T3.CylinderGeometry(.003, .008, .06, 5);
   const cream = new T3.Color('#f4efe4');
-  const p3 = t => t < .2 ? Math.pow(Math.sin(t / .2 * Math.PI / 2), .7) : 1 - Math.pow((t - .2) / .8, 1.3) * .86;
-  const SEG = 26, RAD = 14, KL = 1.15, KW = KL * .14;
-  function geo(pos, idx, extra) {
+  const p3 = t => t < .3 ? Math.pow(Math.sin(t / .3 * Math.PI / 2), .62) : 1 - Math.pow((t - .3) / .7, 1.55) * .84;
+  const SEG = 44, RAD = 22, KL = 1.15, KW = KL * .14;
+  function geo(pos, idx, uv) {
     const g = new T3.BufferGeometry(); g.setAttribute('position', new T3.Float32BufferAttribute(pos, 3));
-    if (extra) g.setAttribute('color', new T3.Float32BufferAttribute(extra, 3));
+    if (uv) g.setAttribute('uv', new T3.Float32BufferAttribute(uv, 2));
     g.setIndex(idx); g.computeVertexNormals(); return g;
   }
-  function makeKoi(f) {
-    const K = KINDS[f.kind], base = new T3.Color(K.base), belly = base.clone().lerp(cream, .45), tmp = new T3.Color();
-    const spots = f.spots.map(sp => ({ x: KL * (.5 - sp.t), z: sp.s * KW * p3(sp.t) * .7, r: sp.r * KW * .95, c: new T3.Color(sp.c) }));
-    const pos = [], col = [], tv = [], idx = [];
-    for (let i = 0; i <= SEG; i++) {
-      const t = i / SEG, x = KL * (.5 - t), w = KW * p3(t), h = w * .85;
-      for (let j = 0; j < RAD; j++) {
-        const th = j / RAD * TAU, y = h * Math.sin(th), z = w * Math.cos(th);
-        pos.push(x, y, z); tv.push(t); tmp.copy(base);
-        if (h > 0 && y < -h * .25) tmp.lerp(belly, Math.min(1, (-y / h - .25) * 2));
-        else for (const sp of spots) if (Math.hypot(x - sp.x, z - sp.z) < sp.r) { tmp.copy(sp.c); break; }
-        const sh = .8 + .2 * (h > 0 ? y / h * .5 + .5 : 1); col.push(tmp.r * sh, tmp.g * sh, tmp.b * sh);
+  // ----- textures: the body pattern (smooth soft-edged patches, scales, gill line) and fin rays are painted on canvases -----
+  const bodyTexCache = new Map(), finTexCache = new Map();
+  const hexRgb = c => { const k = new T3.Color(c); return [Math.round(k.r * 255), Math.round(k.g * 255), Math.round(k.b * 255)]; };
+  const mixC = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
+  const css = (c, a = 1) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+  function bodyTex(f, K) {
+    const key = f.name + '|' + f.kind + '|' + f.spots.length + '|' + (f.spots[0] ? f.spots[0].t.toFixed(3) : 0); if (bodyTexCache.has(key)) return bodyTexCache.get(key);
+    const TW = 1024, TH = 256, cv = document.createElement('canvas'); cv.width = TW; cv.height = TH; const c = cv.getContext('2d');
+    const base = hexRgb(K.base), belly = mixC(base, [244, 239, 228], .5), back = mixC(base, [0, 0, 0], .1);
+    const g = c.createLinearGradient(0, 0, 0, TH); // v: 0/1 belly, .25/.75 sides, .5 back
+    g.addColorStop(0, css(belly)); g.addColorStop(.12, css(belly)); g.addColorStop(.3, css(base)); g.addColorStop(.5, css(back)); g.addColorStop(.7, css(base)); g.addColorStop(.88, css(belly)); g.addColorStop(1, css(belly));
+    c.fillStyle = g; c.fillRect(0, 0, TW, TH);
+    let seed = 7; const R = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    for (const sp of f.spots) {
+      const col = hexRgb(sp.c), u = sp.t * TW, th = Math.acos(clamp(sp.s * .7, -.95, .95)), v = ((th + Math.PI / 2) / TAU) * TH;
+      const ru = Math.max(10, sp.r * KW * .95 / KL * TW * 1.05), rv = Math.max(14, Math.min(TH * .32, sp.r * KW * .95 / (KW * .8) / TAU * TH * 1.1));
+      for (let n = 0; n < 4; n++) { // a few overlapping lobes make an irregular, natural edge
+        const ox = (R() - .5) * ru * .9, oy = (R() - .5) * rv * .7, sx = ru * (.55 + R() * .5), sy = rv * (.55 + R() * .5);
+        c.save(); c.translate(u + ox, v + oy); c.scale(sx, sy);
+        const rg = c.createRadialGradient(0, 0, 0, 0, 0, 1); rg.addColorStop(0, css(col, 1)); rg.addColorStop(.78, css(col, .96)); rg.addColorStop(1, css(col, 0));
+        c.fillStyle = rg; c.beginPath(); c.arc(0, 0, 1, 0, TAU); c.fill(); c.restore();
       }
     }
-    for (let i = 0; i < SEG; i++) for (let j = 0; j < RAD; j++) { const a = i * RAD + j, b = i * RAD + (j + 1) % RAD; idx.push(a, a + RAD, b, b, a + RAD, b + RAD); }
-    const tc = pos.length / 3; pos.push(-KL * .5, 0, 0); tv.push(1); col.push(base.r, base.g, base.b);
-    for (let j = 0; j < RAD; j++) idx.push(SEG * RAD + j, SEG * RAD + (j + 1) % RAD, tc);
-    const bodyG = geo(pos, idx, col); bodyG.computeBoundingSphere(); bodyG.boundingSphere.radius *= 1.4;
-    const body = new T3.Mesh(bodyG, new T3.MeshStandardMaterial({ vertexColors: true, roughness: K.gloss ? .3 : .5, metalness: K.gloss ? .25 : .05, side: T3.DoubleSide }));
-    const finMat = new T3.MeshStandardMaterial({ color: new T3.Color().setStyle(K.fin.replace(/rgba\(([^,]+),([^,]+),([^,]+),[^)]+\)/, 'rgb($1,$2,$3)')), transparent: true, opacity: .78, side: T3.DoubleSide, depthWrite: false, roughness: .6 });
-    const x0 = -KL * .5, ft = KL * .42, fh = KL * .26;
-    const tailPos = [x0 + .03, KW * .12, 0, x0 - ft, fh, 0, x0 - ft * .62, 0, 0, x0 - ft, -fh, 0, x0 + .03, -KW * .12, 0, x0 - ft * .5, fh * .62, 0, x0 - ft * .5, -fh * .62, 0];
-    const tail = new T3.Mesh(geo(tailPos, [0, 5, 2, 5, 1, 2, 0, 2, 4, 4, 2, 6, 6, 2, 3]), finMat);
-    const dPos = [], dIdx = [], n = 7;
-    for (let i = 0; i < n; i++) {
-      const t = .22 + i / (n - 1) * .44, x = KL * (.5 - t), h = KW * p3(t) * .85, top = KL * .12 * Math.pow(Math.sin(Math.PI * Math.pow(i / (n - 1), .7)), .8);
-      dPos.push(x, h * .9, 0, x, h * .9 + top, 0);
-      if (i) { const a = (i - 1) * 2; dIdx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+    // scales: a soft diamond mesh, a touch lighter at the top edge of each scale
+    c.lineWidth = 1.2;
+    for (let row = 0; row < TH / 14; row++) for (let col = 0; col < TW / 14; col++) {
+      const x = col * 14 + (row % 2 ? 7 : 0), y = row * 14 + 7;
+      c.strokeStyle = 'rgba(0,0,0,.07)'; c.beginPath(); c.arc(x, y - 3, 7, .15 * Math.PI, .85 * Math.PI); c.stroke();
+      c.strokeStyle = 'rgba(255,255,255,.08)'; c.beginPath(); c.arc(x, y - 4, 7, 1.15 * Math.PI, 1.85 * Math.PI); c.stroke();
     }
-    const dorsal = new T3.Mesh(geo(dPos, dIdx), finMat);
-    const aPos = [], aIdx = [], na = 5;
-    for (let i = 0; i < na; i++) {
-      const t = .64 + i / (na - 1) * .14, x = KL * (.5 - t), h = KW * p3(t) * .85, top = KL * .07 * Math.pow(Math.sin(Math.PI * Math.pow(i / (na - 1), .7)), .8);
-      aPos.push(x, -h * .9, 0, x, -h * .9 - top, 0);
-      if (i) { const a = (i - 1) * 2; aIdx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    // gill cover, pectoral shadow and a soft sheen along the back
+    c.strokeStyle = 'rgba(0,0,0,.16)'; c.lineWidth = 3; c.beginPath(); c.moveTo(TW * .165, TH * .3); c.quadraticCurveTo(TW * .185, TH * .5, TW * .165, TH * .7); c.stroke();
+    const sh = c.createLinearGradient(0, TH * .36, 0, TH * .6); sh.addColorStop(0, 'rgba(255,255,255,0)'); sh.addColorStop(.5, `rgba(255,255,255,${K.gloss ? .3 : .12})`); sh.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = sh; c.fillRect(0, TH * .36, TW, TH * .24);
+    const t = new T3.CanvasTexture(cv); t.flipY = false; t.anisotropy = 4; t.wrapS = T3.ClampToEdgeWrapping; bodyTexCache.set(key, t); return t;
+  }
+  function finTex(K) {
+    if (finTexCache.has(K.base)) return finTexCache.get(K.base);
+    const S = 128, cv = document.createElement('canvas'); cv.width = S; cv.height = S; const c = cv.getContext('2d');
+    const m = K.fin.match(/rgba\(([^,]+),([^,]+),([^,]+),([^)]+)\)/), fc = m ? [+m[1], +m[2], +m[3]] : [255, 255, 255];
+    const ga = c.createLinearGradient(0, 0, S, 0); ga.addColorStop(0, css(fc, .95)); ga.addColorStop(.55, css(fc, .72)); ga.addColorStop(1, css(fc, .4));
+    c.fillStyle = ga; c.fillRect(0, 0, S, S);
+    for (let i = 0; i <= 18; i++) { const y = i / 18 * S; c.strokeStyle = `rgba(${Math.max(0, fc[0] - 70)},${Math.max(0, fc[1] - 70)},${Math.max(0, fc[2] - 70)},.35)`; c.lineWidth = 1.1; c.beginPath(); c.moveTo(S * .08, y); c.lineTo(S, y); c.stroke(); }
+    const e = c.createLinearGradient(0, 0, 0, S); e.addColorStop(0, 'rgba(0,0,0,.35)'); e.addColorStop(.12, 'rgba(0,0,0,0)'); e.addColorStop(.88, 'rgba(0,0,0,0)'); e.addColorStop(1, 'rgba(0,0,0,.35)'); // soft edges
+    c.globalCompositeOperation = 'destination-out'; c.fillStyle = e; c.fillRect(0, 0, S, S);
+    const t = new T3.CanvasTexture(cv); t.flipY = false; finTexCache.set(K.base, t); return t;
+  }
+  // a fan-shaped fin: rings from the base out to a (optionally forked) edge; u = distance from the base, v = across the fan
+  function fanFin(mat, rings, A0, A1, len, notch, planeXY, ar = 1) {
+    const M = 16, pos = [], uv = [], idx = [], R = rings;
+    for (let r = 0; r <= R; r++) for (let k = 0; k <= M; k++) {
+      const a = A0 + (A1 - A0) * k / M, am = (A0 + A1) / 2, edge = 1 - notch * Math.exp(-Math.pow((a - am) / ((A1 - A0) * .17), 2)), rad = len * (r / R) * (r === R ? edge : 1 - (1 - edge) * Math.pow(r / R, 2));
+      const px = -Math.cos(a) * rad, py = Math.sin(a) * rad * ar;
+      if (planeXY) pos.push(px, py, 0); else pos.push(px, 0, py);
+      uv.push(r / R, k / M);
     }
-    const anal = new T3.Mesh(geo(aPos, aIdx), finMat);
-    const pg = new T3.CircleGeometry(1, 14); pg.scale(KL * .15, KL * .07, 1); pg.rotateX(-Math.PI / 2); pg.translate(-KL * .1, 0, KL * .05);
+    for (let r = 0; r < R; r++) for (let k = 0; k < M; k++) { const a = r * (M + 1) + k, b = a + M + 1; idx.push(a, b, a + 1, a + 1, b, b + 1); }
+    return new T3.Mesh(geo(pos, idx, uv), mat);
+  }
+  function stripFin(mat, pts, top) { // dorsal / anal: u = height (0 at the body, 1 at the tip), v = along the body
+    const pos = [], uv = [], idx = [], n = pts.length;
+    for (let i = 0; i < n; i++) { const [x, y0, h] = pts[i]; pos.push(x, y0, 0, x, y0 + h, 0); uv.push(0, i / (n - 1), 1, i / (n - 1)); if (i) { const a = (i - 1) * 2; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); } }
+    return new T3.Mesh(geo(pos, idx, uv), mat);
+  }
+  function makeKoi(f) {
+    const K = KINDS[f.kind], tex = bodyTex(f, K);
+    const pos = [], tv = [], uv = [], idx = [], W1 = RAD + 1;
+    for (let i = 0; i <= SEG; i++) {
+      const t = i / SEG, x = KL * (.5 - t), w = KW * .76 * p3(t);
+      for (let j = 0; j <= RAD; j++) {
+        const v = j / RAD, th = 3 * Math.PI / 2 + v * TAU, sn = Math.sin(th), cs = Math.cos(th);
+        const y = (sn > 0 ? w * 1.35 : w * 1.15) * Math.sign(sn) * Math.pow(Math.abs(sn), .88), z = w * Math.sign(cs) * Math.pow(Math.abs(cs), .92);
+        pos.push(x, y, z); tv.push(t); uv.push(t, v);
+      }
+    }
+    for (let i = 0; i < SEG; i++) for (let j = 0; j < RAD; j++) { const a = i * W1 + j, b = a + 1; idx.push(a, a + W1, b, b, a + W1, b + W1); }
+    const bodyG = geo(pos, idx, uv); bodyG.computeBoundingSphere(); bodyG.boundingSphere.radius *= 1.4;
+    const body = new T3.Mesh(bodyG, new T3.MeshStandardMaterial({ map: tex, color: '#d9d9d9', roughness: K.gloss ? .28 : .45, metalness: K.gloss ? .3 : .04, side: T3.DoubleSide }));
+    const finMat = new T3.MeshStandardMaterial({ map: finTex(K), transparent: true, opacity: .92, side: T3.DoubleSide, depthWrite: false, roughness: .6 });
+    const x0 = -KL * .5, ft = KL * .46, fh = KL * .3;
+    const tail = fanFin(finMat, 4, -.95, .95, ft, .42, true, fh / ft * 1.05); 
+    tail.geometry.translate(x0 + .03, 0, 0); // base positions live in the geometry so the swim wave can bend the fin
+    const dpts = [], n = 9;
+    for (let i = 0; i < n; i++) { const t = .2 + i / (n - 1) * .46, x = KL * (.5 - t), h = KW * p3(t) * .84, top = KL * .13 * Math.pow(Math.sin(Math.PI * Math.pow(i / (n - 1), .75)), .75) + KL * .01; dpts.push([x, h, top]); }
+    const dorsal = stripFin(finMat, dpts);
+    const apts = [], na = 6;
+    for (let i = 0; i < na; i++) { const t = .62 + i / (na - 1) * .16, x = KL * (.5 - t), h = KW * p3(t) * .7, top = KL * .075 * Math.pow(Math.sin(Math.PI * Math.pow(i / (na - 1), .75)), .75) + KL * .005; apts.push([x, -h, -top]); }
+    const anal = stripFin(finMat, apts);
     const tp = .22, pw = KW * p3(tp), px = KL * (.5 - tp);
-    const pecL = new T3.Mesh(pg, finMat), pecR = new T3.Mesh(pg, finMat);
-    pecL.position.set(px, -pw * .35, pw * .85); pecR.position.set(px, -pw * .35, -pw * .85); pecR.scale.z = -1;
-    const vg = new T3.CircleGeometry(1, 12); vg.scale(KL * .08, KL * .04, 1); vg.rotateX(-Math.PI / 2); vg.translate(-KL * .055, 0, KL * .03);
-    const vp = .52, vw = KW * p3(vp), vx = KL * (.5 - vp), pelL = new T3.Mesh(vg, finMat), pelR = new T3.Mesh(vg, finMat);
-    pelL.position.set(vx, -vw * .7, vw * .8); pelR.position.set(vx, -vw * .7, -vw * .8); pelR.scale.z = -1;
-    pelL.rotation.x = .5; pelR.rotation.x = -.5;
+    const pecL = fanFin(finMat, 3, .15, 1.15, KL * .2, .0, false, .62), pecR = fanFin(finMat, 3, .15, 1.15, KL * .2, .0, false, .62);
+    pecL.position.set(px, -pw * .4, pw * .8); pecR.position.set(px, -pw * .4, -pw * .8); pecR.scale.z = -1; pecL.rotation.x = .35; pecR.rotation.x = -.35;
+    const vp = .52, vw = KW * p3(vp), vx = KL * (.5 - vp);
+    const pelL = fanFin(finMat, 2, .1, 1.0, KL * .11, 0, false, .6), pelR = fanFin(finMat, 2, .1, 1.0, KL * .11, 0, false, .6);
+    pelL.position.set(vx, -vw * .65, vw * .75); pelR.position.set(vx, -vw * .65, -vw * .75); pelR.scale.z = -1; pelL.rotation.x = .5; pelR.rotation.x = -.5;
     const g = new T3.Group(); g.rotation.order = 'YZX'; g.add(body, tail, dorsal, anal, pecL, pecR, pelL, pelR);
-    const et = .08, ew = KW * p3(et);
-    for (const sd of [1, -1]) { const e = new T3.Mesh(eyeGeo, eyeMat); e.scale.setScalar(KW * .12); e.position.set(KL * (.5 - et), ew * .85 * .3, sd * ew * .86); g.add(e); }
+    // eyes: golden iris, dark pupil, tiny highlight
+    const et = .085, ew = KW * p3(et), irisM = new T3.MeshStandardMaterial({ color: '#c9a24a', roughness: .3, metalness: .3 });
+    for (const sd of [1, -1]) {
+      const e = new T3.Group(), iris = new T3.Mesh(eyeGeo, irisM), pup = new T3.Mesh(eyeGeo, eyeMat), hl = new T3.Mesh(eyeGeo, eyeHl);
+      iris.scale.set(1, 1, .8); pup.scale.set(.62, .62, .62); pup.position.z = .38; hl.scale.setScalar(.2); hl.position.set(.25, .3, .75);
+      e.add(iris, pup, hl); e.scale.setScalar(KW * .15); e.position.set(KL * (.5 - et), ew * .22, sd * ew * .84); e.rotation.y = sd > 0 ? 0 : Math.PI; g.add(e);
+    }
+    // small barbels at the mouth
+    const bm = new T3.MeshStandardMaterial({ color: '#efe4cf', roughness: .6 });
+    for (const sd of [1, -1]) { const b = new T3.Mesh(barbelGeo, bm); b.position.set(KL * .5 - .005, -KW * .08, sd * KW * .12); b.rotation.set(sd * .5, sd * .4, -1.3); g.add(b); }
     g.position.set(rnd(-8, 8), rnd(-2, 2), rnd(-8, 3)); scene.add(g);
     const store3 = m => ({ base: Float32Array.from(m.geometry.attributes.position.array) });
     return {
@@ -1763,6 +1821,13 @@ function initDive() {
     ndc.set(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera);
     const hits = ray.intersectObjects(D.koi.map(k => k.body), false);
     if (hits.length) { const k = D.koi.find(k => k.body === hits[0].object); if (k) k.label = 2.6; return; }
+    // feeding: pellets are dropped on the surface in front of the camera and sink slowly
+    const p = ray.ray.origin.clone().add(ray.ray.direction.clone().multiplyScalar(7)); p.x = clamp(p.x, -BOUND + 1, BOUND - 1); p.z = clamp(p.z, -BOUND + 1, BOUND - 1);
+    for (let i = 0; i < 6 && D.food.length < 80; i++) {
+      const m = new T3.Mesh(pelletGeo, pelletMat); m.position.set(p.x + rnd(-.3, .3), SURF_Y - .02, p.z + rnd(-.3, .3));
+      scene.add(m); D.food.push({ m, v: rnd(.1, .2), ph: rnd(0, TAU), life: 8 });
+    }
+    burst3D(p.x, p.z, 8); splashSound(true, .22);
     hint.style.opacity = '0';
   }
   addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
