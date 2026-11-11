@@ -29,7 +29,17 @@ A virtual koi pond for stress relief. One self-contained HTML file: open it in a
 ## Files
 
 - `index.html` – the whole app (about 2.3 MB, audio embedded)
+- `manifest.webmanifest`, `sw.js`, `icon-*.png`, `apple-touch-icon.png` – make it installable on a phone (PWA)
 - `README.md` – this file
+
+## Install on a phone (PWA)
+
+Host the folder over **HTTPS** (GitHub Pages works), then open the URL on the phone:
+
+- **Android (Chrome)**: menu ⋮ → *Install app* / *Add to Home screen*
+- **iPhone (Safari)**: Share → *Add to Home Screen*
+
+It then opens full screen like an app and keeps working offline after the first visit (a service worker caches the page, Three.js and the fonts). After an update is pushed, open the app twice to get the new version.
 
 ## Run locally
 
